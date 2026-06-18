@@ -1,0 +1,207 @@
+version: "3.9"
+
+networks:
+  omyfish-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ─── Infrastructure ────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_DB: omyfish
+      POSTGRES_USER: omyfish
+      POSTGRES_PASSWORD: omyfish_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omyfish"]
+      interval: 10s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: omyfish
+      RABBITMQ_DEFAULT_PASS: omyfish_dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: omyfish
+      MINIO_ROOT_PASSWORD: omyfish_dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"   # console
+    volumes:
+      - minio_data:/data
+    networks: [omyfish-net]
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [omyfish-net]
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus]
+    networks: [omyfish-net]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"   # UI
+      - "14250:14250"   # gRPC collector
+    networks: [omyfish-net]
+
+  # ─── AI Service (Python) ───────────────────────────────────────────────────
+
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_PATH: /checkpoints/best.pt
+      CLASSES_PATH: /checkpoints/classes.json
+    volumes:
+      - ../../omyfish/checkpoints:/checkpoints:ro
+    networks: [omyfish-net]
+
+  # ─── Java Microservices ────────────────────────────────────────────────────
+
+  identity-service:
+    build:
+      context: ./services/identity-service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
+      SPRING_DATASOURCE_USERNAME: omyfish
+      SPRING_DATASOURCE_PASSWORD: omyfish_dev
+      JWT_SECRET: dev-secret-change-in-production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [omyfish-net]
+
+  species-service:
+    build:
+      context: ./services/species-service
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
+      SPRING_DATASOURCE_USERNAME: omyfish
+      SPRING_DATASOURCE_PASSWORD: omyfish_dev
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: omyfish
+      SPRING_RABBITMQ_PASSWORD: omyfish_dev
+      OMYFISH_AI_SERVICE_URL: http://ai-service:8000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      ai-service: { condition: service_started }
+    networks: [omyfish-net]
+
+  observation-service:
+    build:
+      context: ./services/observation-service
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
+      SPRING_DATASOURCE_USERNAME: omyfish
+      SPRING_DATASOURCE_PASSWORD: omyfish_dev
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: omyfish
+      SPRING_RABBITMQ_PASSWORD: omyfish_dev
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: omyfish
+      MINIO_SECRET_KEY: omyfish_dev
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks: [omyfish-net]
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: omyfish
+      SPRING_RABBITMQ_PASSWORD: omyfish_dev
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    networks: [omyfish-net]
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      IDENTITY_SERVICE_URL: http://identity-service:8080
+      SPECIES_SERVICE_URL: http://species-service:8080
+      OBSERVATION_SERVICE_URL: http://observation-service:8080
+    depends_on:
+      - identity-service
+      - species-service
+      - observation-service
+    networks: [omyfish-net]
+
+  # ─── Frontend ─────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend/omyfish-web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+    depends_on: [api-gateway]
+    networks: [omyfish-net]
