@@ -133,10 +133,16 @@ services:
       SPRING_RABBITMQ_PASSWORD: omyfish_dev
       OMYFISH_AI_SERVICE_URL: http://ai-service:8000
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: omyfish
+      MINIO_SECRET_KEY: omyfish_dev
+      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+      SPRING_FLYWAY_BASELINE_VERSION: "0"
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       ai-service: { condition: service_started }
+      minio: { condition: service_started }
     networks: [omyfish-net]
 
   observation-service:
@@ -156,6 +162,8 @@ services:
       MINIO_ACCESS_KEY: omyfish
       MINIO_SECRET_KEY: omyfish_dev
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
+      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+      SPRING_FLYWAY_BASELINE_VERSION: "0"
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

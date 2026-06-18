@@ -34,7 +34,7 @@ target/
 # Node / Next.js
 node_modules/
 .next/
-out/
+frontend/omyfish-web/out/
 dist/
 .npm
 npm-debug.log*
