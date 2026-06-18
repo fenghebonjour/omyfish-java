@@ -1,1 +1,26 @@
-# placeholder
+spring:
+  application:
+    name: notification-service
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${SPRING_RABBITMQ_USERNAME:omyfish}
+    password: ${SPRING_RABBITMQ_PASSWORD:omyfish_dev}
+
+server:
+  port: 8080
+
+omyfish:
+  rabbitmq:
+    queues:
+      observation-created: omyfish.notifications.observation-created
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true

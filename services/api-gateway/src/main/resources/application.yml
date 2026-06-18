@@ -1,1 +1,31 @@
-# placeholder
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: identity-service
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**,/api/users/**
+        - id: species-service
+          uri: ${SPECIES_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/species/**
+        - id: observation-service
+          uri: ${OBSERVATION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/observations/**
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true

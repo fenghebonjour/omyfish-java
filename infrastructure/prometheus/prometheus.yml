@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: identity-service
+    static_configs:
+      - targets: ["identity-service:8080"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: species-service
+    static_configs:
+      - targets: ["species-service:8080"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: observation-service
+    static_configs:
+      - targets: ["observation-service:8080"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: notification-service
+    static_configs:
+      - targets: ["notification-service:8080"]
+    metrics_path: /actuator/prometheus
+
+  - job_name: api-gateway
+    static_configs:
+      - targets: ["api-gateway:8080"]
+    metrics_path: /actuator/prometheus

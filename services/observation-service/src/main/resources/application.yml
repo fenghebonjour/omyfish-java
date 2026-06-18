@@ -1,1 +1,53 @@
-# placeholder
+spring:
+  application:
+    name: observation-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/omyfish}
+    username: ${SPRING_DATASOURCE_USERNAME:omyfish}
+    password: ${SPRING_DATASOURCE_PASSWORD:omyfish_dev}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_observation
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${SPRING_RABBITMQ_USERNAME:omyfish}
+    password: ${SPRING_RABBITMQ_PASSWORD:omyfish_dev}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+server:
+  port: 8080
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:omyfish}
+  secret-key: ${MINIO_SECRET_KEY:omyfish_dev}
+  bucket: observations
+
+omyfish:
+  rabbitmq:
+    queues:
+      fish-identified: omyfish.observations.fish-identified
+    exchanges:
+      observations: omyfish.observations
+    routing-keys:
+      observation-created: observation.created
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true

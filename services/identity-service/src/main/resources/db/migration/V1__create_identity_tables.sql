@@ -1,0 +1,19 @@
+CREATE SCHEMA IF NOT EXISTS identity;
+
+CREATE TABLE IF NOT EXISTS identity.users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'USER',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS identity.api_keys (
+    id UUID PRIMARY KEY,
+    key_hash VARCHAR(255) NOT NULL UNIQUE,
+    user_id UUID NOT NULL REFERENCES identity.users(id),
+    name VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
