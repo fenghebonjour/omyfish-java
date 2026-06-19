@@ -176,10 +176,16 @@ services:
     ports:
       - "8084:8080"
     environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
+      SPRING_DATASOURCE_USERNAME: omyfish
+      SPRING_DATASOURCE_PASSWORD: omyfish_dev
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: omyfish
       SPRING_RABBITMQ_PASSWORD: omyfish_dev
+      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+      SPRING_FLYWAY_BASELINE_VERSION: "0"
     depends_on:
+      postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     networks: [omyfish-net]
 
@@ -193,11 +199,13 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:8080
       SPECIES_SERVICE_URL: http://species-service:8080
       OBSERVATION_SERVICE_URL: http://observation-service:8080
+      NOTIFICATION_SERVICE_URL: http://notification-service:8080
       JWT_SECRET: dev-secret-change-in-production-32b
     depends_on:
       - identity-service
       - species-service
       - observation-service
+      - notification-service
     networks: [omyfish-net]
 
   # ─── Frontend ─────────────────────────────────────────────────────────────

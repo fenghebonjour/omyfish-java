@@ -32,6 +32,10 @@ spring:
           uri: ${OBSERVATION_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/api/v1/observations/**
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/notifications/**
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-change-in-production-32b}
