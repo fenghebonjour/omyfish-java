@@ -46,11 +46,26 @@ export function FishUploader() {
     if (!top) return;
     setSaving(true);
     try {
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+          );
+          latitude = pos.coords.latitude;
+          longitude = pos.coords.longitude;
+        } catch {
+          // location denied or unavailable — save without coordinates
+        }
+      }
       await createObservation({
         speciesName: top.speciesName,
         scientificName: top.scientificName,
         topConfidence: top.confidence,
         imageStorageKey: result.imageKey,
+        latitude,
+        longitude,
       });
       setSaved(true);
     } catch (err) {
