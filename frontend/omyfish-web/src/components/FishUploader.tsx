@@ -38,7 +38,7 @@ export function FishUploader() {
       formData.append("topK", "5");
 
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/species/identify`,
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/api/v1/species/identify`,
         { method: "POST", body: formData }
       );
 

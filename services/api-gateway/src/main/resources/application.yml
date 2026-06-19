@@ -5,6 +5,20 @@ spring:
     max-in-memory-size: 20MB
   cloud:
     gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - "*"
+            allowCredentials: false
       routes:
         - id: identity-service
           uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
