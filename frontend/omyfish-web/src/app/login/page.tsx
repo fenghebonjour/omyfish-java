@@ -20,9 +20,6 @@ export default function LoginPage() {
     try {
       if (mode === "register") {
         await register(email, password);
-        setMode("login");
-        setError(null);
-        return;
       }
       const data = await login(email, password);
       setToken(data.token);
@@ -87,10 +84,6 @@ export default function LoginPage() {
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm text-red-700">
               {error}
             </div>
-          )}
-
-          {mode === "register" && !error && (
-            <p className="text-xs text-gray-500">After registering, switch to Login to sign in.</p>
           )}
 
           <button

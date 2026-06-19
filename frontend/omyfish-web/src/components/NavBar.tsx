@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, getUserEmail, isLoggedIn } from "@/lib/auth";
 
 export function NavBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
     setEmail(isLoggedIn() ? getUserEmail() : null);
-  }, []);
+  }, [pathname]);
 
   function logout() {
     clearToken();
