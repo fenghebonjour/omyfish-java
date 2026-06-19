@@ -22,7 +22,8 @@ import java.util.List;
 public class AuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> PUBLIC_PREFIXES = List.of(
-        "/api/auth/"
+        "/api/auth/",
+        "/api/v1/species/identify"
     );
 
     private final SecretKey key;
