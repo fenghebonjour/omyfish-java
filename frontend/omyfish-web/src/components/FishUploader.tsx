@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
+import exifr from "exifr";
 import { identifyFish, createObservation, type PredictionResult, type IdentificationResponse } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 
@@ -12,6 +13,7 @@ export function FishUploader() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exifCoords, setExifCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -21,16 +23,26 @@ export function FishUploader() {
     setResult(null);
     setError(null);
     setSaved(false);
+    setExifCoords(null);
     setLoading(true);
 
-    try {
-      const data = await identifyFish(file, 5);
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Identification failed");
-    } finally {
-      setLoading(false);
+    // Extract GPS from image EXIF in parallel with the identify call
+    const [data, gps] = await Promise.allSettled([
+      identifyFish(file, 5),
+      exifr.gps(file),
+    ]);
+
+    if (gps.status === "fulfilled" && gps.value?.latitude != null) {
+      setExifCoords({ latitude: gps.value.latitude, longitude: gps.value.longitude });
     }
+
+    if (data.status === "fulfilled") {
+      setResult(data.value);
+    } else {
+      setError(data.reason instanceof Error ? data.reason.message : "Identification failed");
+    }
+
+    setLoading(false);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -46,9 +58,10 @@ export function FishUploader() {
     if (!top) return;
     setSaving(true);
     try {
-      let latitude: number | null = null;
-      let longitude: number | null = null;
-      if (navigator.geolocation) {
+      let latitude = exifCoords?.latitude ?? null;
+      let longitude = exifCoords?.longitude ?? null;
+
+      if (latitude == null && navigator.geolocation) {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
             navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
@@ -59,6 +72,7 @@ export function FishUploader() {
           // location denied or unavailable — save without coordinates
         }
       }
+
       await createObservation({
         speciesName: top.speciesName,
         scientificName: top.scientificName,
@@ -114,13 +128,20 @@ export function FishUploader() {
           ))}
 
           {loggedIn && !saved && (
-            <button
-              onClick={saveObservation}
-              disabled={saving}
-              className="mt-2 w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save top result as observation"}
-            </button>
+            <div className="flex flex-col gap-1">
+              {exifCoords && (
+                <p className="text-xs text-gray-400 text-center">
+                  GPS from photo: {exifCoords.latitude.toFixed(4)}, {exifCoords.longitude.toFixed(4)}
+                </p>
+              )}
+              <button
+                onClick={saveObservation}
+                disabled={saving}
+                className="mt-1 w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {saving ? "Saving..." : "Save top result as observation"}
+              </button>
+            </div>
           )}
           {saved && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm text-center">
