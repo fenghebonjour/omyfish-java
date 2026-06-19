@@ -2,26 +2,16 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-
-interface PredictionResult {
-  speciesName: string;
-  scientificName: string;
-  confidence: number;
-  rank: number;
-  conservationStatus?: string;
-}
-
-interface IdentificationResponse {
-  predictions: PredictionResult[];
-  uncertain: boolean;
-  imageKey: string;
-}
+import { identifyFish, createObservation, type PredictionResult, type IdentificationResponse } from "@/lib/api";
+import { isLoggedIn } from "@/lib/auth";
 
 export function FishUploader() {
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IdentificationResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -30,20 +20,11 @@ export function FishUploader() {
     setPreview(URL.createObjectURL(file));
     setResult(null);
     setError(null);
+    setSaved(false);
     setLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-      formData.append("topK", "5");
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/api/v1/species/identify`,
-        { method: "POST", body: formData }
-      );
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: IdentificationResponse = await res.json();
+      const data = await identifyFish(file, 5);
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Identification failed");
@@ -58,6 +39,28 @@ export function FishUploader() {
     maxSize: 20 * 1024 * 1024,
     multiple: false,
   });
+
+  async function saveObservation() {
+    if (!result) return;
+    const top = result.predictions[0];
+    if (!top) return;
+    setSaving(true);
+    try {
+      await createObservation({
+        speciesName: top.speciesName,
+        scientificName: top.scientificName,
+        topConfidence: top.confidence,
+        imageStorageKey: result.imageKey,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save observation");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const loggedIn = isLoggedIn();
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl mx-auto p-6">
@@ -77,27 +80,43 @@ export function FishUploader() {
       </div>
 
       {loading && (
-        <div className="text-center text-blue-600 font-medium animate-pulse">
-          Identifying species...
-        </div>
+        <div className="text-center text-blue-600 font-medium animate-pulse">Identifying species...</div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">{error}</div>
       )}
 
       {result && (
         <div className="flex flex-col gap-3">
           {result.uncertain && (
             <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-yellow-800 text-sm">
-              Low confidence result — consider using a clearer photo
+              Low confidence — consider using a clearer photo
             </div>
           )}
           {result.predictions.map((p) => (
             <PredictionCard key={p.rank} prediction={p} />
           ))}
+
+          {loggedIn && !saved && (
+            <button
+              onClick={saveObservation}
+              disabled={saving}
+              className="mt-2 w-full bg-green-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save top result as observation"}
+            </button>
+          )}
+          {saved && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm text-center">
+              Observation saved! View it in <a href="/observations" className="underline font-medium">My Observations</a>.
+            </div>
+          )}
+          {!loggedIn && (
+            <p className="text-center text-sm text-gray-400">
+              <a href="/login" className="text-blue-500 underline">Sign in</a> to save this observation
+            </p>
+          )}
         </div>
       )}
     </div>
