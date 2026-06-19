@@ -1,7 +1,6 @@
 package com.omyfish.shared.domain;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public abstract class AggregateRoot<ID> extends Entity<ID> {
@@ -17,7 +16,7 @@ public abstract class AggregateRoot<ID> extends Entity<ID> {
     }
 
     public List<DomainEvent> pullDomainEvents() {
-        List<DomainEvent> events = Collections.unmodifiableList(domainEvents);
+        List<DomainEvent> events = List.copyOf(domainEvents);
         domainEvents.clear();
         return events;
     }

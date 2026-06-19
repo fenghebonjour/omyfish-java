@@ -49,7 +49,7 @@ public class ObservationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ObservationResponse> get(@PathVariable UUID id) {
+    public ResponseEntity<ObservationResponse> get(@PathVariable("id") UUID id) {
         return ResponseEntity.ok(ObservationResponse.from(getObservationUseCase.get(id)));
     }
 

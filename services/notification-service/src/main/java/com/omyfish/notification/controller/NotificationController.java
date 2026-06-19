@@ -25,7 +25,7 @@ public class NotificationController {
 
     @PutMapping("/{id}/read")
     public ResponseEntity<Void> markRead(
-        @PathVariable UUID id,
+        @PathVariable("id") UUID id,
         @RequestHeader("X-User-Id") String userIdHeader
     ) {
         var found = repository.findByIdAndUserId(id, UUID.fromString(userIdHeader));

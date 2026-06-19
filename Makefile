@@ -30,11 +30,22 @@ build-service:
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
+# Run all unit + slice tests via Docker (no local Maven required)
 test:
-	mvn test
+	docker run --rm \
+	  -v $(CURDIR):/workspace \
+	  -v omyfish-maven-cache:/root/.m2 \
+	  -w /workspace \
+	  maven:3.9-eclipse-temurin-21-alpine \
+	  mvn test -pl services/identity-service,services/observation-service,services/notification-service --no-transfer-progress
 
 test-service:
-	mvn test -pl services/$(service)
+	docker run --rm \
+	  -v $(CURDIR):/workspace \
+	  -v omyfish-maven-cache:/root/.m2 \
+	  -w /workspace \
+	  maven:3.9-eclipse-temurin-21-alpine \
+	  mvn test -pl services/$(service) -am --no-transfer-progress
 
 test-integration:
 	mvn verify -Pintegration-tests
