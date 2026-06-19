@@ -1,1 +1,61 @@
-# placeholder
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: {{ $name }}
+    {{- include "omyfish.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+        app.kubernetes.io/part-of: omyfish
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: {{ $svc.port | quote }}
+    spec:
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ if $.Values.global.imageRegistry }}{{ $.Values.global.imageRegistry }}/{{ end }}{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          {{- if $svc.env }}
+          env:
+            {{- toYaml $svc.env | nindent 12 }}
+          {{- end }}
+          envFrom:
+            - configMapRef:
+                name: omyfish-config
+            - secretRef:
+                name: omyfish-secret
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          readinessProbe:
+            {{- if $svc.readinessProbe }}
+            {{- toYaml $svc.readinessProbe | nindent 12 }}
+            {{- else }}
+            {{- include "omyfish.defaultReadinessProbe" $ | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- if $svc.livenessProbe }}
+            {{- toYaml $svc.livenessProbe | nindent 12 }}
+            {{- else }}
+            {{- include "omyfish.defaultLivenessProbe" $ | nindent 12 }}
+            {{- end }}
+{{- end }}
+{{- end }}

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: species-service
+  name: notification-service
   namespace: omyfish
   labels:
-    app: species-service
+    app: notification-service
     app.kubernetes.io/part-of: omyfish
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: species-service
+      app: notification-service
   template:
     metadata:
       labels:
-        app: species-service
+        app: notification-service
         app.kubernetes.io/part-of: omyfish
       annotations:
         prometheus.io/scrape: "true"
@@ -22,8 +22,8 @@ spec:
         prometheus.io/port: "8080"
     spec:
       containers:
-        - name: species-service
-          image: omyfish/species-service:latest
+        - name: notification-service
+          image: omyfish/notification-service:latest
           ports:
             - containerPort: 8080
           envFrom:
@@ -33,11 +33,11 @@ spec:
                 name: omyfish-secret
           resources:
             requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
               cpu: 500m
               memory: 1Gi
-            limits:
-              cpu: 1000m
-              memory: 2Gi
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
@@ -56,13 +56,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: species-service
+  name: notification-service
   namespace: omyfish
   labels:
-    app: species-service
+    app: notification-service
 spec:
   selector:
-    app: species-service
+    app: notification-service
   ports:
     - name: http
       port: 8080

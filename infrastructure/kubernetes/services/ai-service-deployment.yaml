@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: omyfish
+  labels:
+    app: ai-service
+    app.kubernetes.io/part-of: omyfish
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+        app.kubernetes.io/part-of: omyfish
+    spec:
+      containers:
+        - name: ai-service
+          image: omyfish/ai-service:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MODEL_PATH
+              value: /checkpoints/best.pt
+          resources:
+            requests:
+              cpu: 1000m
+              memory: 4Gi
+            limits:
+              cpu: 2000m
+              memory: 8Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 3
+          volumeMounts:
+            - name: model-checkpoints
+              mountPath: /checkpoints
+              readOnly: true
+      volumes:
+        - name: model-checkpoints
+          persistentVolumeClaim:
+            claimName: model-checkpoints-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: omyfish
+  labels:
+    app: ai-service
+spec:
+  selector:
+    app: ai-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-checkpoints-pvc
+  namespace: omyfish
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 5Gi

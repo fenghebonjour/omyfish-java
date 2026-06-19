@@ -1,1 +1,18 @@
-# placeholder
+apiVersion: v2
+name: omyfish
+description: OMyFish Enterprise — fish identification microservices platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - omyfish
+  - fish-identification
+  - microservices
+maintainers:
+  - name: OMyFish Team
+# Infrastructure (PostgreSQL, RabbitMQ, MinIO) is deployed separately.
+# Install before this chart:
+#   helm repo add bitnami https://charts.bitnami.com/bitnami
+#   helm install postgresql bitnami/postgresql -n omyfish -f infra-values/postgresql.yaml
+#   helm install rabbitmq   bitnami/rabbitmq   -n omyfish -f infra-values/rabbitmq.yaml
+#   helm install minio      bitnami/minio      -n omyfish -f infra-values/minio.yaml

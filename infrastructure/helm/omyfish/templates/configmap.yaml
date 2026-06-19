@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: omyfish-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "omyfish.labels" . | nindent 4 }}
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://{{ .Release.Name }}-postgresql:5432/omyfish"
+  SPRING_RABBITMQ_HOST: "{{ .Release.Name }}-rabbitmq"
+  MINIO_ENDPOINT: "http://{{ .Release.Name }}-minio:9000"
+  OMYFISH_AI_SERVICE_URL: "http://ai-service:8000"
+  IDENTITY_SERVICE_URL: "http://identity-service:8080"
+  SPECIES_SERVICE_URL: "http://species-service:8080"
+  OBSERVATION_SERVICE_URL: "http://observation-service:8080"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:8080"
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otelEndpoint | quote }}
+  SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+  NEXT_PUBLIC_API_URL: {{ .Values.config.nextPublicApiUrl | quote }}

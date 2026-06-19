@@ -1,1 +1,19 @@
-# placeholder
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: omyfish
+  labels:
+    name: omyfish
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: omyfish-quota
+  namespace: omyfish
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: 20Gi
+    limits.cpu: "20"
+    limits.memory: 40Gi
+    pods: "50"

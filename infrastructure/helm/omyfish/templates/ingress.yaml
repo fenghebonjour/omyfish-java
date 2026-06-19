@@ -1,23 +1,26 @@
+{{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: omyfish-ingress
-  namespace: omyfish
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "omyfish.labels" . | nindent 4 }}
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
-  ingressClassName: nginx
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
   tls:
     - secretName: omyfish-api-tls
       hosts:
-        - api.omyfish.io
+        - {{ .Values.ingress.apiHost }}
     - secretName: omyfish-www-tls
       hosts:
-        - omyfish.io
+        - {{ .Values.ingress.wwwHost }}
+  {{- end }}
   rules:
-    - host: api.omyfish.io
+    - host: {{ .Values.ingress.apiHost }}
       http:
         paths:
           - path: /
@@ -27,7 +30,7 @@ spec:
                 name: api-gateway
                 port:
                   number: 8080
-    - host: omyfish.io
+    - host: {{ .Values.ingress.wwwHost }}
       http:
         paths:
           - path: /
@@ -37,3 +40,4 @@ spec:
                 name: frontend
                 port:
                   number: 3000
+{{- end }}
