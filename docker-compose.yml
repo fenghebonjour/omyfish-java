@@ -112,7 +112,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
       SPRING_DATASOURCE_USERNAME: omyfish
       SPRING_DATASOURCE_PASSWORD: omyfish_dev
-      JWT_SECRET: dev-secret-change-in-production
+      JWT_SECRET: dev-secret-change-in-production-32b
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:14250
     depends_on:
       postgres: { condition: service_healthy }
