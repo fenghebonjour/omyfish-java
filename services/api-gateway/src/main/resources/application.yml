@@ -33,6 +33,9 @@ spring:
           predicates:
             - Path=/api/v1/observations/**
 
+jwt:
+  secret: ${JWT_SECRET:dev-secret-change-in-production-32b}
+
 server:
   port: 8080
 
