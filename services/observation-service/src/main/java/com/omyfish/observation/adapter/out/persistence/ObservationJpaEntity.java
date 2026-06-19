@@ -47,9 +47,9 @@ class ObservationJpaEntity {
         GpsCoordinates coords = (latitude != null && longitude != null)
             ? GpsCoordinates.of(latitude, longitude)
             : GpsCoordinates.unknown();
-        return Observation.create(
-            userId, speciesName, scientificName, topConfidence,
-            imageStorageKey, coords, null, notes
+        return Observation.reconstitute(
+            id, userId, speciesName, scientificName, topConfidence,
+            imageStorageKey, coords, null, notes, observedAt, createdAt
         );
     }
 }

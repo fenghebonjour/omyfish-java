@@ -28,7 +28,7 @@ public class FishIdentifiedConsumer {
 
         // Observation is typically created by the user explicitly after reviewing predictions.
         // This consumer logs the AI result for analytics / audit trail.
-        log.info("AI identified {} with {:.1f}% confidence for user={}",
-            event.topSpeciesName(), event.topConfidence() * 100, event.userId());
+        log.info("AI identified {} with {}% confidence for user={}",
+            event.topSpeciesName(), String.format("%.1f", event.topConfidence() * 100), event.userId());
     }
 }

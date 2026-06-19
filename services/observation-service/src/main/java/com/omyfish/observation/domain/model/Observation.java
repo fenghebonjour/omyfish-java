@@ -21,8 +21,31 @@ public class Observation extends AggregateRoot<UUID> {
     private Instant observedAt;
     private Instant createdAt;
 
+    private Observation(UUID id) {
+        super(id);
+    }
+
     private Observation() {
         super(UUID.randomUUID());
+    }
+
+    public static Observation reconstitute(
+        UUID id, UUID userId, String speciesName, String scientificName,
+        double topConfidence, String imageStorageKey, GpsCoordinates location,
+        ExifMetadata exifMetadata, String notes, Instant observedAt, Instant createdAt
+    ) {
+        Observation obs = new Observation(id);
+        obs.userId = userId;
+        obs.speciesName = speciesName;
+        obs.scientificName = scientificName;
+        obs.topConfidence = topConfidence;
+        obs.imageStorageKey = imageStorageKey;
+        obs.location = location;
+        obs.exifMetadata = exifMetadata;
+        obs.notes = notes;
+        obs.observedAt = observedAt;
+        obs.createdAt = createdAt;
+        return obs;
     }
 
     public static Observation create(

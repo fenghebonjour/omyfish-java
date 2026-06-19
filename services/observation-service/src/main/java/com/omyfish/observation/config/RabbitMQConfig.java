@@ -10,6 +10,11 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMQConfig {
 
     @Bean
+    public TopicExchange speciesExchange() {
+        return new TopicExchange("omyfish.species");
+    }
+
+    @Bean
     public TopicExchange observationsExchange() {
         return new TopicExchange("omyfish.observations");
     }
@@ -22,8 +27,8 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public Binding fishIdentifiedBinding(Queue fishIdentifiedQueue, TopicExchange observationsExchange) {
-        return BindingBuilder.bind(fishIdentifiedQueue).to(observationsExchange).with("fish.identified");
+    public Binding fishIdentifiedBinding(Queue fishIdentifiedQueue, TopicExchange speciesExchange) {
+        return BindingBuilder.bind(fishIdentifiedQueue).to(speciesExchange).with("fish.identified");
     }
 
     @Bean
