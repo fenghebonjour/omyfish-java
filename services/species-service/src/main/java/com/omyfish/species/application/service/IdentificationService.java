@@ -30,7 +30,7 @@ public class IdentificationService implements IdentifyFishUseCase {
     @Override
     public IdentificationResult identify(IdentifyFishCommand command) {
         List<AIServicePort.AIPrediction> aiPredictions =
-            aiService.predict(command.imageStorageKey(), command.topK());
+            aiService.predict(command.imageBase64(), command.topK());
 
         List<Prediction> predictions = aiPredictions.stream()
             .map(ai -> {
@@ -69,6 +69,7 @@ public class IdentificationService implements IdentifyFishUseCase {
     }
 
     public record IdentifyFishCommand(
+        String imageBase64,
         String imageStorageKey,
         int topK,
         UUID observationId,

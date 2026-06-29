@@ -56,7 +56,7 @@
 | **species-service**  | AI orchestration, species knowledge base, top-K predictions | 8082 | Spring Web, Spring AMQP       |
 | **observation-service** | Observation CRUD, EXIF extraction, PostGIS, GeoJSON export | 8083 | Hibernate Spatial, MinIO   |
 | **notification-service** | Async notifications, email/webhook dispatch            | 8084 | Spring AMQP consumer          |
-| **ai-service**       | EfficientNet-B3 inference, CLIP fallback, ONNX export       | 8000 | Python, FastAPI, PyTorch      |
+| **ai-service**       | EfficientNet-B3 inference, CLIP fallback — shared `omyfish-ai` | 8000 | Python, FastAPI, PyTorch      |
 
 ## DDD Bounded Contexts
 
@@ -305,7 +305,7 @@ JVM Tuning (production):
 
 **Hibernate Spatial + PostGIS** — Hibernate Spatial adds JPA support for `Geometry` types, enabling type-safe GIS queries in Java code. PostGIS's ST_AsGeoJSON, ST_Within, ST_DWithin make radius searches and GeoJSON export trivially efficient.
 
-**Python AI Service (preserved)** — PyTorch's ecosystem for computer vision has no Java equivalent. Keeping it as an independent HTTP microservice avoids a forced JVM port of the model training/inference stack. ONNX export enables future edge deployment.
+**omyfish-ai (shared AI microservice)** — PyTorch's ecosystem for computer vision has no Java equivalent. The AI service lives in its own repo (`../omyfish-ai`) and is shared across omyfish-python, omyfish-java, and omyfish-dotnet. The docker-compose build context points to `../omyfish-ai` so the data science team can iterate on the model independently of the Java release cycle. ONNX export enables future edge deployment.
 
 **Flyway** — Schema-as-code with versioned SQL migrations. Runs automatically on service startup, supports rollback scripts, and integrates with GitLab CI for migration dry-runs in staging before production applies.
 

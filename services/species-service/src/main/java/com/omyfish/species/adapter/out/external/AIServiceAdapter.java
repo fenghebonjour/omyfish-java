@@ -2,6 +2,7 @@ package com.omyfish.species.adapter.out.external;
 
 import com.omyfish.species.domain.port.out.AIServicePort;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -17,13 +18,11 @@ public class AIServiceAdapter implements AIServicePort {
     }
 
     @Override
-    public List<AIPrediction> predict(String imageStorageKey, int topK) {
+    public List<AIPrediction> predict(String imageBase64, int topK) {
         AIResponse response = webClient.post()
-            .uri(uriBuilder -> uriBuilder
-                .path("/predict")
-                .queryParam("image_key", imageStorageKey)
-                .queryParam("top_k", topK)
-                .build())
+            .uri("/predict")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(new PredictRequest(imageBase64, topK))
             .retrieve()
             .bodyToMono(AIResponse.class)
             .block();
@@ -35,6 +34,7 @@ public class AIServiceAdapter implements AIServicePort {
             .toList();
     }
 
+    private record PredictRequest(String image_base64, int top_k) {}
     private record AIResponse(List<AIPredictionDto> predictions) {}
     private record AIPredictionDto(String scientific_name, String common_name, double confidence, int rank) {}
 }

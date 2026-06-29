@@ -4,7 +4,7 @@ import java.util.List;
 
 public interface AIServicePort {
 
-    List<AIPrediction> predict(String imageStorageKey, int topK);
+    List<AIPrediction> predict(String imageBase64, int topK);
 
     record AIPrediction(
         String scientificName,

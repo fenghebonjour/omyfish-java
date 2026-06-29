@@ -36,7 +36,7 @@ services/
   species-service/              AI orchestration, species KB
   observation-service/          Observation CRUD, EXIF, PostGIS, GeoJSON
   notification-service/         RabbitMQ consumer, notifications
-  ai-service/                   Python/PyTorch — DO NOT add Java here
+  ai-service/                   builds from ../omyfish-ai — DO NOT add Java here
 frontend/omyfish-web/           Next.js 15 + TypeScript
 infrastructure/
   kubernetes/                   K8s manifests (namespace, deployment, hpa, ingress)
