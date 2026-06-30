@@ -159,6 +159,10 @@ export function FishUploader() {
   );
 }
 
+function formatSpeciesName(name: string): string {
+  return name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function PredictionCard({ prediction }: { prediction: PredictionResult }) {
   const pct = Math.round(prediction.confidence * 100);
   const barColor = pct >= 85 ? "bg-green-500" : pct >= 50 ? "bg-yellow-400" : "bg-red-400";
@@ -167,7 +171,7 @@ function PredictionCard({ prediction }: { prediction: PredictionResult }) {
     <div className="border rounded-xl p-4 flex flex-col gap-2 shadow-sm">
       <div className="flex justify-between items-start">
         <div>
-          <p className="font-semibold text-gray-900">{prediction.speciesName}</p>
+          <p className="font-semibold text-gray-900">{formatSpeciesName(prediction.speciesName)}</p>
           <p className="text-sm text-gray-500 italic">{prediction.scientificName}</p>
         </div>
         <span className="text-sm font-medium text-gray-700">{pct}%</span>

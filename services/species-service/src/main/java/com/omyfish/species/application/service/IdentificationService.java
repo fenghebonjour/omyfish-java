@@ -38,7 +38,8 @@ public class IdentificationService implements IdentifyFishUseCase {
                     .findByScientificName(ai.scientificName())
                     .orElseGet(() -> Species.create(
                         ai.scientificName(), ai.commonName(),
-                        "Unknown", "Unknown", "Unknown", "Unknown", "", false
+                        "Unknown", ai.conservationStatus() != null ? ai.conservationStatus() : "Unknown",
+                        "Unknown", "Unknown", "", false
                     ));
                 return Prediction.createRanked(
                     species,

@@ -10,6 +10,7 @@ public interface AIServicePort {
         String scientificName,
         String commonName,
         double confidence,
-        int rank
+        int rank,
+        String conservationStatus
     ) {}
 }

@@ -33,6 +33,9 @@ minio:
 
 server:
   port: 8080
+  error:
+    include-message: always
+    include-stacktrace: on-param
 
 omyfish:
   ai-service:
@@ -47,7 +50,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,loggers
   metrics:
     export:
       prometheus:

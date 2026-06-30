@@ -30,11 +30,11 @@ public class AIServiceAdapter implements AIServicePort {
         if (response == null) return List.of();
 
         return response.predictions().stream()
-            .map(p -> new AIPrediction(p.scientific_name(), p.common_name(), p.confidence(), p.rank()))
+            .map(p -> new AIPrediction(p.scientific_name(), p.common_name(), p.confidence(), p.rank(), p.conservation_status()))
             .toList();
     }
 
     private record PredictRequest(String image_base64, int top_k) {}
     private record AIResponse(List<AIPredictionDto> predictions) {}
-    private record AIPredictionDto(String scientific_name, String common_name, double confidence, int rank) {}
+    private record AIPredictionDto(String scientific_name, String common_name, double confidence, int rank, String conservation_status) {}
 }
