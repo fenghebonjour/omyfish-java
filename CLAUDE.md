@@ -3,9 +3,10 @@
 ## Commands
 
 ```bash
-make up                         # start all Docker services
+make up                         # start all Docker services (reuses images — does NOT rebuild)
+make build-up                   # rebuild images + start (use after code changes)
 make down                       # stop all services
-make build                      # mvn clean package -DskipTests
+make build                      # mvn clean package -DskipTests (host-side; does not affect Docker images)
 make test                       # mvn test (all modules)
 make test-service service=species-service  # single service
 make migrate                    # run Flyway migrations (all services)

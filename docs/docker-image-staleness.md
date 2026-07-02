@@ -26,7 +26,7 @@ The only things that refresh code inside Docker are image builds:
 
 ```bash
 # after pulling or changing code — rebuild everything that changed:
-docker compose up -d --build
+make build-up          # = docker compose up -d --build
 
 # or targeted (single service):
 docker compose build species-service && docker compose up -d species-service
@@ -49,8 +49,17 @@ We tried baking `--build` into `make up` and reverted it. The trade-offs:
 | Behavior matches convention | Yes (`up` = cheap start everywhere) | Surprising |
 | Prod-like discipline | Yes (prod runs pinned, pre-built images) | No (build-on-start) |
 
-Decision: keep `make up` cheap and predictable; run
-`docker compose up -d --build` **manually and deliberately** when code changed.
+Decision: keep `make up` cheap and predictable, and provide a **separate,
+deliberate** target for rebuilds:
+
+```makefile
+up:        # daily, fast startup — reuses images
+	docker compose up -d
+
+build-up:  # when code, dependencies, or Dockerfiles changed
+	docker compose up -d --build
+```
+
 The failure mode of forgetting is now documented here instead of hidden.
 
 ## Mitigations that make rebuilds cheap

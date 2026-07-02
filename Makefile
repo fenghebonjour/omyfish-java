@@ -5,6 +5,10 @@
 up:
 	docker compose up -d
 
+# Use when code, dependencies, or Dockerfiles changed — rebuilds images first
+build-up:
+	docker compose up -d --build
+
 down:
 	docker compose down
 
