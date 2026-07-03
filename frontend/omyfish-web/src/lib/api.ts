@@ -42,6 +42,11 @@ export interface PredictionResult {
   confidence: number;
   rank: number;
   conservationStatus?: string;
+  habitat?: string;
+  diet?: string;
+  maxSizeCm?: number;
+  description?: string;
+  funFact?: string;
 }
 
 export interface IdentificationResponse {

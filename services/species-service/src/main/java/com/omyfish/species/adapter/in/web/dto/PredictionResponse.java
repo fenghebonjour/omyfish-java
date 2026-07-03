@@ -12,6 +12,11 @@ public record PredictionResponse(
         String scientificName,
         double confidence,
         int rank,
-        String conservationStatus
+        String conservationStatus,
+        String habitat,
+        String diet,
+        Integer maxSizeCm,
+        String description,
+        String funFact
     ) {}
 }

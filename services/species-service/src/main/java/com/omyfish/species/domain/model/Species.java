@@ -14,6 +14,9 @@ public class Species extends AggregateRoot<UUID> {
     private String habitat;
     private String geographicRange;
     private String description;
+    private String diet;
+    private Integer maxSizeCm;
+    private String funFact;
     private boolean isNorthAmericanFreshwater;
 
     private Species() {
@@ -30,6 +33,23 @@ public class Species extends AggregateRoot<UUID> {
         String description,
         boolean isNorthAmericanFreshwater
     ) {
+        return create(scientificName, commonName, family, conservationStatus,
+            habitat, geographicRange, description, null, null, null, isNorthAmericanFreshwater);
+    }
+
+    public static Species create(
+        String scientificName,
+        String commonName,
+        String family,
+        String conservationStatus,
+        String habitat,
+        String geographicRange,
+        String description,
+        String diet,
+        Integer maxSizeCm,
+        String funFact,
+        boolean isNorthAmericanFreshwater
+    ) {
         Species species = new Species();
         species.scientificName = scientificName;
         species.commonName = commonName;
@@ -38,6 +58,9 @@ public class Species extends AggregateRoot<UUID> {
         species.habitat = habitat;
         species.geographicRange = geographicRange;
         species.description = description;
+        species.diet = diet;
+        species.maxSizeCm = maxSizeCm;
+        species.funFact = funFact;
         species.isNorthAmericanFreshwater = isNorthAmericanFreshwater;
         return species;
     }
@@ -53,5 +76,8 @@ public class Species extends AggregateRoot<UUID> {
     public String getHabitat() { return habitat; }
     public String getGeographicRange() { return geographicRange; }
     public String getDescription() { return description; }
+    public String getDiet() { return diet; }
+    public Integer getMaxSizeCm() { return maxSizeCm; }
+    public String getFunFact() { return funFact; }
     public boolean isNorthAmericanFreshwater() { return isNorthAmericanFreshwater; }
 }

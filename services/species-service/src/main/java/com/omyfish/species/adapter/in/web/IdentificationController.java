@@ -47,7 +47,12 @@ public class IdentificationController {
                 p.getSpecies().getScientificName(),
                 p.getConfidence().getValue(),
                 p.getRank(),
-                p.getSpecies().getConservationStatus()
+                p.getSpecies().getConservationStatus(),
+                p.getSpecies().getHabitat(),
+                p.getSpecies().getDiet(),
+                p.getSpecies().getMaxSizeCm(),
+                p.getSpecies().getDescription(),
+                p.getSpecies().getFunFact()
             ))
             .toList();
 

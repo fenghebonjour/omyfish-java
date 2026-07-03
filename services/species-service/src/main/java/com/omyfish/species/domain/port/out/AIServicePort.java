@@ -11,6 +11,11 @@ public interface AIServicePort {
         String commonName,
         double confidence,
         int rank,
-        String conservationStatus
+        String conservationStatus,
+        String habitat,
+        String diet,
+        Integer maxSizeCm,
+        String description,
+        String funFact
     ) {}
 }
