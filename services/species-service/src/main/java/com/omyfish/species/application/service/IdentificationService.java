@@ -29,10 +29,10 @@ public class IdentificationService implements IdentifyFishUseCase {
 
     @Override
     public IdentificationResult identify(IdentifyFishCommand command) {
-        List<AIServicePort.AIPrediction> aiPredictions =
+        AIServicePort.AIResult aiResult =
             aiService.predict(command.imageBase64(), command.topK());
 
-        List<Prediction> predictions = aiPredictions.stream()
+        List<Prediction> predictions = aiResult.predictions().stream()
             .map(ai -> {
                 Species species = speciesRepository
                     .findByScientificName(ai.scientificName())
@@ -67,7 +67,7 @@ public class IdentificationService implements IdentifyFishUseCase {
         return new IdentificationResult(predictions, predictions.stream()
             .findFirst()
             .map(p -> p.getConfidence().isUncertain())
-            .orElse(true));
+            .orElse(true), aiResult.isFish());
     }
 
     public record IdentifyFishCommand(
@@ -78,5 +78,5 @@ public class IdentificationService implements IdentifyFishUseCase {
         UUID userId
     ) {}
 
-    public record IdentificationResult(List<Prediction> predictions, boolean uncertain) {}
+    public record IdentificationResult(List<Prediction> predictions, boolean uncertain, boolean isFish) {}
 }

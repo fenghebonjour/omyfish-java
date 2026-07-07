@@ -116,7 +116,13 @@ export function FishUploader() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">{error}</div>
       )}
 
-      {result && (
+      {result && result.isFish === false && (
+        <div className="bg-orange-50 border border-orange-300 rounded-lg p-4 text-orange-800 text-center">
+          🐟 That doesn&apos;t look like a fish. Try uploading a clear photo of a fish.
+        </div>
+      )}
+
+      {result && result.isFish !== false && (
         <div className="flex flex-col gap-3">
           {result.uncertain && (
             <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-yellow-800 text-sm">

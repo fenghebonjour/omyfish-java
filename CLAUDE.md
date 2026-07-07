@@ -37,7 +37,6 @@ services/
   species-service/              AI orchestration, species KB
   observation-service/          Observation CRUD, EXIF, PostGIS, GeoJSON
   notification-service/         RabbitMQ consumer, notifications
-  ai-service/                   builds from ../omyfish-ai — DO NOT add Java here
 frontend/omyfish-web/           Next.js 15 + TypeScript
 infrastructure/
   kubernetes/                   K8s manifests (namespace, deployment, hpa, ingress)
@@ -80,7 +79,7 @@ config/           Spring beans wiring ports to adapters
 
 ## AI Service
 
-The Python AI service (`services/ai-service/`) is called via HTTP from `species-service`.
+The Python AI service (built from `../omyfish-ai` — see docker-compose.yml) is called via HTTP from `species-service`.
 - Adapter: `adapter/out/external/AIServiceAdapter.java`
 - Port: `domain/port/out/AIServicePort.java`
 - Do not add PyTorch/ML dependencies to any Java service.

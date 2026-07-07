@@ -18,7 +18,7 @@ public class AIServiceAdapter implements AIServicePort {
     }
 
     @Override
-    public List<AIPrediction> predict(String imageBase64, int topK) {
+    public AIResult predict(String imageBase64, int topK) {
         AIResponse response = webClient.post()
             .uri("/predict")
             .contentType(MediaType.APPLICATION_JSON)
@@ -27,17 +27,18 @@ public class AIServiceAdapter implements AIServicePort {
             .bodyToMono(AIResponse.class)
             .block();
 
-        if (response == null) return List.of();
+        if (response == null) return new AIResult(List.of(), true);
 
-        return response.predictions().stream()
+        List<AIPrediction> predictions = response.predictions().stream()
             .map(p -> new AIPrediction(
                 p.scientific_name(), p.common_name(), p.confidence(), p.rank(), p.conservation_status(),
                 p.habitat(), p.diet(), p.max_size_cm(), p.description(), p.fun_fact()))
             .toList();
+        return new AIResult(predictions, response.is_fish() == null || response.is_fish());
     }
 
     private record PredictRequest(String image_base64, int top_k) {}
-    private record AIResponse(List<AIPredictionDto> predictions) {}
+    private record AIResponse(List<AIPredictionDto> predictions, Boolean is_fish) {}
     private record AIPredictionDto(
         String scientific_name, String common_name, double confidence, int rank, String conservation_status,
         String habitat, String diet, Integer max_size_cm, String description, String fun_fact) {}

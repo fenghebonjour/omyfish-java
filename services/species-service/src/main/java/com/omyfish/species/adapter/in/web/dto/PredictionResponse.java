@@ -5,7 +5,8 @@ import java.util.List;
 public record PredictionResponse(
     List<PredictionItem> predictions,
     boolean uncertain,
-    String imageKey
+    String imageKey,
+    boolean isFish
 ) {
     public record PredictionItem(
         String speciesName,

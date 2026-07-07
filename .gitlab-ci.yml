@@ -87,11 +87,7 @@ docker-api-gateway:
     - docker build -t $DOCKER_REGISTRY/omyfish/api-gateway:$IMAGE_TAG ./services/api-gateway
     - docker push $DOCKER_REGISTRY/omyfish/api-gateway:$IMAGE_TAG
 
-docker-ai-service:
-  <<: *docker-build
-  script:
-    - docker build -t $DOCKER_REGISTRY/omyfish/ai-service:$IMAGE_TAG ./services/ai-service
-    - docker push $DOCKER_REGISTRY/omyfish/ai-service:$IMAGE_TAG
+# ai-service image is built from the separate omyfish-ai repository
 
 # ─── Deploy ───────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,9 @@ import java.util.List;
 
 public interface AIServicePort {
 
-    List<AIPrediction> predict(String imageBase64, int topK);
+    AIResult predict(String imageBase64, int topK);
+
+    record AIResult(List<AIPrediction> predictions, boolean isFish) {}
 
     record AIPrediction(
         String scientificName,

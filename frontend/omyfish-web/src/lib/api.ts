@@ -53,6 +53,7 @@ export interface IdentificationResponse {
   predictions: PredictionResult[];
   uncertain: boolean;
   imageKey: string;
+  isFish?: boolean;
 }
 
 export async function identifyFish(image: File, topK = 5): Promise<IdentificationResponse> {

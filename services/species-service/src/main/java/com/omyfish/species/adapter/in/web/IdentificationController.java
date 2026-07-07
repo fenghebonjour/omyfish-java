@@ -56,6 +56,6 @@ public class IdentificationController {
             ))
             .toList();
 
-        return ResponseEntity.ok(new PredictionResponse(items, result.uncertain(), imageKey));
+        return ResponseEntity.ok(new PredictionResponse(items, result.uncertain(), imageKey, result.isFish()));
     }
 }
