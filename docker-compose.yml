@@ -128,6 +128,11 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 40s
 
   species-service:
     build:
@@ -154,6 +159,11 @@ services:
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_started }
     networks: [omyfish-net, omyfish-shared]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 40s
 
   observation-service:
     build:
@@ -178,6 +188,11 @@ services:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 40s
 
   notification-service:
     build:
@@ -198,6 +213,11 @@ services:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
     networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 40s
 
   api-gateway:
     build:
@@ -212,11 +232,16 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:8080
       JWT_SECRET: dev-secret-change-in-production-32b
     depends_on:
-      - identity-service
-      - species-service
-      - observation-service
-      - notification-service
+      identity-service: { condition: service_healthy }
+      species-service: { condition: service_healthy }
+      observation-service: { condition: service_healthy }
+      notification-service: { condition: service_healthy }
     networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      retries: 5
+      start_period: 40s
 
   # ─── Frontend ─────────────────────────────────────────────────────────────
 
@@ -228,5 +253,6 @@ services:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8080
-    depends_on: [api-gateway]
+    depends_on:
+      api-gateway: { condition: service_healthy }
     networks: [omyfish-net]
