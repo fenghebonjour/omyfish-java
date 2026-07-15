@@ -57,7 +57,7 @@ omyfish-java/
     species-service/          ← AI orchestration, species KB
     observation-service/      ← Logging, GIS, GeoJSON
     notification-service/     ← RabbitMQ event consumer
-    ai-service/               ← builds from ../omyfish-ai (shared AI service)
+    ai-service/               ← builds from ../omyfish-ai (shared: fish ID + Bite Score)
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
     omyfish-shared-events/    ← FishIdentifiedEvent, ObservationCreatedEvent

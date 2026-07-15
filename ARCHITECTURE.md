@@ -56,7 +56,7 @@
 | **species-service**  | AI orchestration, species knowledge base, top-K predictions | 8082 | Spring Web, Spring AMQP       |
 | **observation-service** | Observation CRUD, EXIF extraction, PostGIS, GeoJSON export | 8083 | Hibernate Spatial, MinIO   |
 | **notification-service** | Async notifications, email/webhook dispatch            | 8084 | Spring AMQP consumer          |
-| **ai-service**       | EfficientNet-B3 inference, CLIP fallback — shared `omyfish-ai` | 8000 | Python, FastAPI, PyTorch      |
+| **ai-service**       | EfficientNet-B3 inference, CLIP fallback, Bite Score forecast — shared `omyfish-ai` | 8000 | Python, FastAPI, PyTorch      |
 
 ## DDD Bounded Contexts
 

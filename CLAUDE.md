@@ -84,6 +84,8 @@ The Python AI service (built from `../omyfish-ai` — see docker-compose.yml) is
 - Port: `domain/port/out/AIServicePort.java`
 - Do not add PyTorch/ML dependencies to any Java service.
 
+Besides fish ID (`POST /predict`), ai-service exposes the Bite Score forecast (`GET /bite-score/forecast|today|species-key`). Bite-score responses always include a six-factor breakdown — pass it through to clients untouched, never reduce it to just the headline score. `GET /bite-score/species-key?name=` maps a confirmed fish ID to the species key to store per user for tuned forecasts.
+
 ## Key Spring Dependencies (managed in parent pom.xml)
 
 - Spring Boot 3.3.x BOM
