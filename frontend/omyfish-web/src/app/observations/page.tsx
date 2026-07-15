@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getObservations, type Observation } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 import { ObservationMap } from "@/components/ObservationMap";
+import { BiteScorePanel } from "@/components/BiteScorePanel";
 
 export default function ObservationsPage() {
   const router = useRouter();
@@ -57,8 +58,10 @@ export default function ObservationsPage() {
 }
 
 function ObservationCard({ obs }: { obs: Observation }) {
+  const [showBiteScore, setShowBiteScore] = useState(false);
   const pct = Math.round(obs.topConfidence * 100);
   const barColor = pct >= 85 ? "bg-green-500" : pct >= 50 ? "bg-yellow-400" : "bg-red-400";
+  const hasLocation = obs.latitude != null && obs.longitude != null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-2 shadow-sm">
@@ -75,15 +78,26 @@ function ObservationCard({ obs }: { obs: Observation }) {
       <div className="w-full bg-gray-100 rounded-full h-1.5">
         <div className={`h-1.5 rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
-      {obs.latitude != null && obs.longitude != null && (
-        <a
-          href={`https://www.openstreetmap.org/?mlat=${obs.latitude}&mlon=${obs.longitude}&zoom=12`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-blue-500 hover:underline"
-        >
-          {obs.latitude.toFixed(4)}, {obs.longitude.toFixed(4)}
-        </a>
+      {hasLocation && (
+        <div className="flex items-center gap-3 text-xs">
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${obs.latitude}&mlon=${obs.longitude}&zoom=12`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline"
+          >
+            {obs.latitude!.toFixed(4)}, {obs.longitude!.toFixed(4)}
+          </a>
+          <button
+            onClick={() => setShowBiteScore((s) => !s)}
+            className="text-blue-600 hover:underline"
+          >
+            🎣 {showBiteScore ? "Hide bite score" : "Bite score"}
+          </button>
+        </div>
+      )}
+      {showBiteScore && hasLocation && (
+        <BiteScorePanel lat={obs.latitude!} lon={obs.longitude!} species={obs.speciesName} />
       )}
     </div>
   );

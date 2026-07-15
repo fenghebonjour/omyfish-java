@@ -65,6 +65,39 @@ export async function identifyFish(image: File, topK = 5): Promise<Identificatio
   return res.json();
 }
 
+// ── Bite score ────────────────────────────────────────────────────────────────
+
+export interface BiteHourlyScore {
+  timestamp: string;
+  score: number;
+  breakdown: Record<string, number>;
+  weightedContribution: Record<string, number>;
+  timeOfDayMultiplier: number;
+  safetyFlag?: string | null;
+}
+
+export interface BiteForecast {
+  species: string;
+  lat: number;
+  lon: number;
+  hourly: BiteHourlyScore[];
+  bestWindows: BiteHourlyScore[];
+}
+
+// species accepts a profile key or any common/scientific name from a
+// confirmed fish ID — the backend resolves it (general fallback).
+export async function getBiteScoreToday(
+  lat: number,
+  lon: number,
+  species = "general",
+): Promise<BiteForecast> {
+  const res = await fetch(
+    `${API_URL}/api/v1/species/bite-score/today?lat=${lat}&lon=${lon}&species=${encodeURIComponent(species)}`,
+  );
+  await checkOk(res);
+  return res.json();
+}
+
 // ── Observations ──────────────────────────────────────────────────────────────
 
 export interface Observation {

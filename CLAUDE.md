@@ -86,6 +86,8 @@ The Python AI service (built from `../omyfish-ai` — see docker-compose.yml) is
 
 Besides fish ID (`POST /predict`), ai-service exposes the Bite Score forecast (`GET /bite-score/forecast|today|species-key`). Bite-score responses always include a six-factor breakdown — pass it through to clients untouched, never reduce it to just the headline score. `GET /bite-score/species-key?name=` maps a confirmed fish ID to the species key to store per user for tuned forecasts.
 
+species-service proxies these at `GET /api/v1/species/bite-score/forecast|today` (`GetBiteForecastUseCase` → `AIServiceAdapter`, which resolves any species name via `/bite-score/species-key`, general fallback; ai-service outages → 503). The path is whitelisted in the gateway's `AuthFilter` PUBLIC_PREFIXES. Frontend: `BiteScorePanel` on each located observation card.
+
 ## Key Spring Dependencies (managed in parent pom.xml)
 
 - Spring Boot 3.3.x BOM

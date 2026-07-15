@@ -23,7 +23,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> PUBLIC_PREFIXES = List.of(
         "/api/auth/",
-        "/api/v1/species/identify"
+        "/api/v1/species/identify",
+        "/api/v1/species/bite-score"
     );
 
     private final SecretKey key;
