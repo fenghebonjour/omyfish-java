@@ -29,8 +29,8 @@ export function barColor(score: number) {
   return "bg-red-400";
 }
 
-// The "fishable day" window shown on the Timing graph; also the range the
-// daily aggregate (gauge + calendar) is averaged over.
+// The "fishable day" window the daily aggregate (gauge, strip, calendar) is
+// averaged over. The chart itself displays the full 0-24h day.
 export const DAY_START_HOUR = 4;
 export const DAY_END_HOUR = 20;
 

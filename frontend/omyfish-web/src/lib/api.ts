@@ -81,14 +81,21 @@ export interface TimeWindow {
   end: string;
 }
 
+export interface SunTimes {
+  date: string; // ISO date
+  sunrise: string;
+  sunset: string;
+}
+
 export interface BiteForecast {
   species: string;
   lat: number;
   lon: number;
   hourly: BiteHourlyScore[];
   bestWindows: BiteHourlyScore[];
-  majorWindows: TimeWindow[]; // solunar: moon transit/antitransit ±75 min
-  minorWindows: TimeWindow[]; // solunar: moonrise/moonset ±45 min
+  majorWindows: TimeWindow[]; // per day: windows around the top-2 aggregate-score peaks
+  minorWindows: TimeWindow[]; // per day: windows around the next-2 peaks
+  sunTimes: SunTimes[]; // per-day sunrise/sunset (drives the dawn/dusk score boost)
 }
 
 // species accepts a profile key or any common/scientific name from a
@@ -109,7 +116,7 @@ export async function getBiteScoreForecast(
   lat: number,
   lon: number,
   species = "general",
-  hours = 168,
+  hours = 336,
 ): Promise<BiteForecast> {
   const res = await fetch(
     `${API_URL}/api/v1/species/bite-score/forecast?lat=${lat}&lon=${lon}&species=${encodeURIComponent(species)}&hours=${hours}`,

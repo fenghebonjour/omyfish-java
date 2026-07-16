@@ -34,7 +34,12 @@ export function BiteScorePanel({
   if (!forecast)
     return <div className="mt-2 text-xs text-gray-400 animate-pulse">Loading bite score…</div>;
 
-  const now = forecast.hourly[0];
+  // The forecast is anchored at local midnight, so find the current hour.
+  const currentHour = new Date();
+  currentHour.setMinutes(0, 0, 0);
+  const now =
+    forecast.hourly.find((h) => new Date(h.timestamp).getTime() === currentHour.getTime()) ??
+    forecast.hourly[forecast.hourly.length - 1];
   if (!now)
     return <div className="mt-2 text-xs text-gray-400">No forecast data for this spot.</div>;
 

@@ -4,69 +4,77 @@ import {
   Line,
   LineChart,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { BAND_THRESHOLDS, DAY_END_HOUR, DAY_START_HOUR } from "@/lib/biteScore";
+import { BAND_THRESHOLDS } from "@/lib/biteScore";
 
 export interface ChartPoint {
-  hour: number; // 4..20
+  hour: number; // 0..23
   time: string; // "4:00 AM"
   value: number; // 0..100
 }
 
+/** A major/minor peak window mapped onto the day's 0-24 hour axis. */
+export interface HourRange {
+  x1: number;
+  x2: number;
+}
+
 function formatHour(hour: number) {
+  if (hour === 0 || hour === 24) return "12 AM";
   if (hour === 12) return "12 PM";
   return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
 }
 
-/** Contiguous runs of points in the High band — the shaded peak windows. */
-function peakRuns(points: ChartPoint[]): Array<{ x1: number; x2: number }> {
-  const runs: Array<{ x1: number; x2: number }> = [];
-  let start: number | null = null;
-  for (const p of points) {
-    if (p.value >= BAND_THRESHOLDS.high) {
-      start = start ?? p.hour;
-    } else if (start !== null) {
-      runs.push({ x1: start, x2: p.hour - 1 });
-      start = null;
-    }
-  }
-  if (start !== null) runs.push({ x1: start, x2: points[points.length - 1].hour });
-  // Widen by half an hour so single-hour peaks stay visible.
-  return runs.map((r) => ({
-    x1: Math.max(DAY_START_HOUR, r.x1 - 0.5),
-    x2: Math.min(DAY_END_HOUR, r.x2 + 0.5),
-  }));
-}
-
-export function ActivityChart({ points }: { points: ChartPoint[] }) {
+export function ActivityChart({
+  points,
+  majorRanges,
+  minorRanges,
+  sunMarks,
+}: {
+  points: ChartPoint[];
+  majorRanges: HourRange[];
+  minorRanges: HourRange[];
+  sunMarks: Array<{ x: number; label: string }>; // sunrise/sunset — the dawn/dusk boost
+}) {
   if (points.length === 0) {
-    return (
-      <p className="text-sm text-gray-400 py-10 text-center">
-        No hours left in today&apos;s 4 AM–8 PM window.
-      </p>
-    );
+    return <p className="text-sm text-gray-400 py-10 text-center">No forecast data for this day.</p>;
   }
 
   return (
     <div className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+        <LineChart data={points} margin={{ top: 18, right: 12, bottom: 0, left: 0 }}>
           {/* Low / Medium / High horizontal bands */}
           <ReferenceArea y1={0} y2={BAND_THRESHOLDS.medium} fill="#f8fafc" fillOpacity={1} />
           <ReferenceArea y1={BAND_THRESHOLDS.medium} y2={BAND_THRESHOLDS.high} fill="#eff6ff" fillOpacity={1} />
           <ReferenceArea y1={BAND_THRESHOLDS.high} y2={100} fill="#dbeafe" fillOpacity={0.7} />
-          {peakRuns(points).map((r) => (
-            <ReferenceArea key={r.x1} x1={r.x1} x2={r.x2} fill="#3b82f6" fillOpacity={0.15} />
+          {/* Score-peak windows — matches the Major/Minor times lists below the chart */}
+          {minorRanges.map((r) => (
+            <ReferenceArea key={`minor-${r.x1}`} x1={r.x1} x2={r.x2} fill="#60a5fa" fillOpacity={0.12} />
+          ))}
+          {majorRanges.map((r) => (
+            <ReferenceArea key={`major-${r.x1}`} x1={r.x1} x2={r.x2} fill="#2563eb" fillOpacity={0.18} />
+          ))}
+          {/* Sunrise/sunset — the dawn/dusk peaks come from these, not the moon */}
+          {sunMarks.map((m) => (
+            <ReferenceLine
+              key={`sun-${m.x}`}
+              x={m.x}
+              stroke="#f59e0b"
+              strokeDasharray="3 3"
+              label={{ value: m.label, position: "top", fontSize: 10, fill: "#d97706" }}
+            />
           ))}
           <XAxis
             dataKey="hour"
             type="number"
-            domain={[DAY_START_HOUR, DAY_END_HOUR]}
-            ticks={[4, 8, 12, 16, 20]}
+            domain={[0, 24]}
+            ticks={[0, 4, 8, 12, 16, 20, 24]}
             tickFormatter={formatHour}
             tickLine={false}
             axisLine={{ stroke: "#e5e7eb" }}

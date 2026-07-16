@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +71,8 @@ public class AIServiceAdapter implements AIServicePort {
             dto.hourly().stream().map(AIServiceAdapter::toScore).toList(),
             dto.best_windows().stream().map(AIServiceAdapter::toScore).toList(),
             toWindows(dto.major_windows()),
-            toWindows(dto.minor_windows()));
+            toWindows(dto.minor_windows()),
+            toSunTimes(dto.sun_times()));
     }
 
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
@@ -85,13 +87,20 @@ public class AIServiceAdapter implements AIServicePort {
         return windows.stream().map(w -> new TimeWindow(w.start(), w.end())).toList();
     }
 
+    private static List<SunTimes> toSunTimes(List<SunTimesDto> sunTimes) {
+        if (sunTimes == null) return List.of();
+        return sunTimes.stream().map(s -> new SunTimes(s.date(), s.sunrise(), s.sunset())).toList();
+    }
+
     private record PredictRequest(String image_base64, int top_k) {}
     private record SpeciesKeyResponse(String input, String species_key, boolean matched) {}
     private record BiteForecastDto(
         String species, double lat, double lon,
         List<BiteHourlyScoreDto> hourly, List<BiteHourlyScoreDto> best_windows,
-        List<TimeWindowDto> major_windows, List<TimeWindowDto> minor_windows) {}
+        List<TimeWindowDto> major_windows, List<TimeWindowDto> minor_windows,
+        List<SunTimesDto> sun_times) {}
     private record TimeWindowDto(LocalDateTime start, LocalDateTime end) {}
+    private record SunTimesDto(LocalDate date, LocalDateTime sunrise, LocalDateTime sunset) {}
     private record BiteHourlyScoreDto(
         LocalDateTime timestamp, double score,
         Map<String, Double> breakdown, Map<String, Double> weighted_contribution,

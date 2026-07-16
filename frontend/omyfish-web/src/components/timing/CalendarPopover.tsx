@@ -7,7 +7,7 @@ export function CalendarPopover({
   onSelect,
   onClose,
 }: {
-  days: string[]; // ISO dates — same 7-day window as the strip
+  days: string[]; // ISO dates — 14-day window (the strip shows the first 7)
   dailyScores: Map<string, number | null>;
   selected: string;
   onSelect: (day: string) => void;
@@ -16,9 +16,9 @@ export function CalendarPopover({
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-10 z-20 bg-white border border-blue-100 rounded-2xl shadow-lg p-4 w-80">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Next 7 days</p>
-        <div className="grid grid-cols-4 gap-2">
+      <div className="absolute right-0 top-10 z-20 bg-white border border-blue-100 rounded-2xl shadow-lg p-4 w-[26rem] max-w-[90vw]">
+        <p className="text-sm font-semibold text-gray-700 mb-3">Next 14 days</p>
+        <div className="grid grid-cols-7 gap-1.5">
           {days.map((day) => {
             const date = new Date(`${day}T12:00:00`);
             const score = dailyScores.get(day) ?? null;

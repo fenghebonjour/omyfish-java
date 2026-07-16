@@ -2,16 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getBiteScoreForecast, type BiteForecast, type BiteHourlyScore, type TimeWindow } from "@/lib/api";
-import {
-  DAY_END_HOUR,
-  DAY_START_HOUR,
-  FACTORS,
-  activityBand,
-  dayWindowMean,
-  isoDateOf,
-  type Factor,
-} from "@/lib/biteScore";
-import { ActivityChart, type ChartPoint } from "@/components/timing/ActivityChart";
+import { FACTORS, activityBand, dayWindowMean, isoDateOf, type Factor } from "@/lib/biteScore";
+import { ActivityChart, type ChartPoint, type HourRange } from "@/components/timing/ActivityChart";
 import { ActivityGauge } from "@/components/timing/ActivityGauge";
 import { CalendarPopover } from "@/components/timing/CalendarPopover";
 import { DayStrip } from "@/components/timing/DayStrip";
@@ -21,7 +13,7 @@ type FactorTab = "overall" | Factor;
 const REVERSE_GEOCODE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client";
 
 function gaugeLabel(tab: FactorTab, score: number | null): string {
-  if (score === null) return "No hours left in today's window";
+  if (score === null) return "No data for this day";
   const band = activityBand(score);
   if (tab === "overall") return `${band} fish activity`;
   const quality = band === "High" ? "Favorable" : band === "Medium" ? "Fair" : "Poor";
@@ -46,6 +38,18 @@ function windowsForDay(windows: TimeWindow[], day: string): TimeWindow[] {
   return windows.filter(
     (w) => new Date(w.start).getTime() < dayEnd && new Date(w.end).getTime() > dayStart,
   );
+}
+
+function hourOfDay(iso: string, day: string): number {
+  return (new Date(iso).getTime() - new Date(`${day}T00:00:00`).getTime()) / 3_600_000;
+}
+
+/** Map a major/minor window onto the day's 0-24 hour axis, clipped to the day. */
+function toHourRange(w: TimeWindow, day: string): HourRange {
+  return {
+    x1: Math.max(0, hourOfDay(w.start, day)),
+    x2: Math.min(24, hourOfDay(w.end, day)),
+  };
 }
 
 function WindowList({ title, windows }: { title: string; windows: TimeWindow[] }) {
@@ -116,16 +120,18 @@ export default function TimingPage() {
     };
   }, [coords]);
 
+  // 14 days of data: strip shows the first 7, the calendar popover all 14.
   const days = useMemo(() => {
     if (!forecast) return [];
     const seen: string[] = [];
     for (const h of forecast.hourly) {
       const d = isoDateOf(h.timestamp);
       if (!seen.includes(d)) seen.push(d);
-      if (seen.length === 7) break;
+      if (seen.length === 14) break;
     }
     return seen;
   }, [forecast]);
+  const stripDays = days.slice(0, 7);
 
   const hoursByDay = useMemo(() => {
     const map = new Map<string, BiteHourlyScore[]>();
@@ -154,13 +160,24 @@ export default function TimingPage() {
 
   const dayHours = selectedDay ? hoursByDay.get(selectedDay) ?? [] : [];
   const gaugeScore = dayWindowMean(dayHours, valueOf);
-  const chartPoints: ChartPoint[] = dayHours
-    .map((h) => ({ date: new Date(h.timestamp), h }))
-    .filter(({ date }) => date.getHours() >= DAY_START_HOUR && date.getHours() <= DAY_END_HOUR)
-    .map(({ date, h }) => ({ hour: date.getHours(), time: formatTime(h.timestamp), value: valueOf(h) }));
+  const chartPoints: ChartPoint[] = dayHours.map((h) => ({
+    hour: new Date(h.timestamp).getHours(),
+    time: formatTime(h.timestamp),
+    value: valueOf(h),
+  }));
 
   const majorToday = selectedDay && forecast ? windowsForDay(forecast.majorWindows, selectedDay) : [];
   const minorToday = selectedDay && forecast ? windowsForDay(forecast.minorWindows, selectedDay) : [];
+  const majorRanges = selectedDay ? majorToday.map((w) => toHourRange(w, selectedDay)) : [];
+  const minorRanges = selectedDay ? minorToday.map((w) => toHourRange(w, selectedDay)) : [];
+
+  const sunToday = selectedDay ? forecast?.sunTimes.find((s) => s.date === selectedDay) : undefined;
+  const sunMarks = sunToday
+    ? [
+        { x: hourOfDay(sunToday.sunrise, selectedDay!), label: `☀ ${formatTime(sunToday.sunrise)}` },
+        { x: hourOfDay(sunToday.sunset, selectedDay!), label: `☀ ${formatTime(sunToday.sunset)}` },
+      ].filter((m) => m.x >= 0 && m.x <= 24)
+    : [];
 
   return (
     <main className="min-h-screen bg-gray-50 py-10">
@@ -216,7 +233,7 @@ export default function TimingPage() {
           </div>
         ) : (
           <>
-            <DayStrip days={days} selected={selectedDay} onSelect={setSelectedDay} />
+            <DayStrip days={stripDays} dailyScores={dailyScores} selected={selectedDay} onSelect={setSelectedDay} />
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
               <p className="text-sm text-gray-500 text-center">
@@ -227,7 +244,12 @@ export default function TimingPage() {
                 })}
               </p>
               <ActivityGauge score={gaugeScore} label={gaugeLabel(factorTab, gaugeScore)} />
-              <ActivityChart points={chartPoints} />
+              <ActivityChart
+                points={chartPoints}
+                majorRanges={majorRanges}
+                minorRanges={minorRanges}
+                sunMarks={sunMarks}
+              />
               <div className="flex gap-1.5 flex-wrap justify-center">
                 {(["overall", ...FACTORS] as FactorTab[]).map((tab) => (
                   <button

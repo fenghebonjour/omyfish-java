@@ -13,6 +13,6 @@ public class BiteForecastService implements GetBiteForecastUseCase {
 
     @Override
     public AIServicePort.BiteForecast getForecast(double lat, double lon, String species, int hours) {
-        return aiService.getBiteForecast(lat, lon, species, Math.clamp(hours, 1, 168));
+        return aiService.getBiteForecast(lat, lon, species, Math.clamp(hours, 1, 336));
     }
 }

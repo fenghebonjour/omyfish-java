@@ -1,5 +1,6 @@
 package com.omyfish.species.domain.port.out;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -23,10 +24,13 @@ public interface AIServicePort {
         List<BiteHourlyScore> hourly,
         List<BiteHourlyScore> bestWindows,
         List<TimeWindow> majorWindows,
-        List<TimeWindow> minorWindows
+        List<TimeWindow> minorWindows,
+        List<SunTimes> sunTimes
     ) {}
 
     record TimeWindow(LocalDateTime start, LocalDateTime end) {}
+
+    record SunTimes(LocalDate date, LocalDateTime sunrise, LocalDateTime sunset) {}
 
     record BiteHourlyScore(
         LocalDateTime timestamp,
