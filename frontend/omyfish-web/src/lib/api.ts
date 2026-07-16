@@ -76,12 +76,19 @@ export interface BiteHourlyScore {
   safetyFlag?: string | null;
 }
 
+export interface TimeWindow {
+  start: string;
+  end: string;
+}
+
 export interface BiteForecast {
   species: string;
   lat: number;
   lon: number;
   hourly: BiteHourlyScore[];
   bestWindows: BiteHourlyScore[];
+  majorWindows: TimeWindow[]; // solunar: moon transit/antitransit ±75 min
+  minorWindows: TimeWindow[]; // solunar: moonrise/moonset ±45 min
 }
 
 // species accepts a profile key or any common/scientific name from a
@@ -93,6 +100,19 @@ export async function getBiteScoreToday(
 ): Promise<BiteForecast> {
   const res = await fetch(
     `${API_URL}/api/v1/species/bite-score/today?lat=${lat}&lon=${lon}&species=${encodeURIComponent(species)}`,
+  );
+  await checkOk(res);
+  return res.json();
+}
+
+export async function getBiteScoreForecast(
+  lat: number,
+  lon: number,
+  species = "general",
+  hours = 168,
+): Promise<BiteForecast> {
+  const res = await fetch(
+    `${API_URL}/api/v1/species/bite-score/forecast?lat=${lat}&lon=${lon}&species=${encodeURIComponent(species)}&hours=${hours}`,
   );
   await checkOk(res);
   return res.json();

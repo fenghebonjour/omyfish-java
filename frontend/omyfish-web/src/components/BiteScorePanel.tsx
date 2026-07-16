@@ -2,20 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getBiteScoreToday, type BiteForecast, type BiteHourlyScore } from "@/lib/api";
-
-const FACTORS = ["pressure", "temperature", "wind", "water", "solunar", "sky"] as const;
-
-function scoreColor(score: number) {
-  if (score >= 70) return "text-green-600";
-  if (score >= 40) return "text-yellow-600";
-  return "text-red-500";
-}
-
-function barColor(score: number) {
-  if (score >= 70) return "bg-green-500";
-  if (score >= 40) return "bg-yellow-400";
-  return "bg-red-400";
-}
+import { FACTORS, barColor, scoreColor } from "@/lib/biteScore";
 
 function windowLabel(w: BiteHourlyScore) {
   const d = new Date(w.timestamp);

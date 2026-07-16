@@ -24,6 +24,7 @@ export function NavBar() {
     <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-6">
         <Link href="/" className="text-blue-600 font-bold text-lg">OMyFish</Link>
+        <Link href="/timing" className="text-sm text-gray-600 hover:text-gray-900">Timing</Link>
         <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">Identify</Link>
         {email && (
           <>

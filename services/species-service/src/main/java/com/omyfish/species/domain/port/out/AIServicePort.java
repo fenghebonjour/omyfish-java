@@ -21,8 +21,12 @@ public interface AIServicePort {
         double lat,
         double lon,
         List<BiteHourlyScore> hourly,
-        List<BiteHourlyScore> bestWindows
+        List<BiteHourlyScore> bestWindows,
+        List<TimeWindow> majorWindows,
+        List<TimeWindow> minorWindows
     ) {}
+
+    record TimeWindow(LocalDateTime start, LocalDateTime end) {}
 
     record BiteHourlyScore(
         LocalDateTime timestamp,

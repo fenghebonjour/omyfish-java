@@ -68,7 +68,9 @@ public class AIServiceAdapter implements AIServicePort {
         return new BiteForecast(
             dto.species(), dto.lat(), dto.lon(),
             dto.hourly().stream().map(AIServiceAdapter::toScore).toList(),
-            dto.best_windows().stream().map(AIServiceAdapter::toScore).toList());
+            dto.best_windows().stream().map(AIServiceAdapter::toScore).toList(),
+            toWindows(dto.major_windows()),
+            toWindows(dto.minor_windows()));
     }
 
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
@@ -77,11 +79,19 @@ public class AIServiceAdapter implements AIServicePort {
             h.time_of_day_multiplier(), h.safety_flag());
     }
 
+    // Null-safe: an ai-service image predating solunar windows omits the fields.
+    private static List<TimeWindow> toWindows(List<TimeWindowDto> windows) {
+        if (windows == null) return List.of();
+        return windows.stream().map(w -> new TimeWindow(w.start(), w.end())).toList();
+    }
+
     private record PredictRequest(String image_base64, int top_k) {}
     private record SpeciesKeyResponse(String input, String species_key, boolean matched) {}
     private record BiteForecastDto(
         String species, double lat, double lon,
-        List<BiteHourlyScoreDto> hourly, List<BiteHourlyScoreDto> best_windows) {}
+        List<BiteHourlyScoreDto> hourly, List<BiteHourlyScoreDto> best_windows,
+        List<TimeWindowDto> major_windows, List<TimeWindowDto> minor_windows) {}
+    private record TimeWindowDto(LocalDateTime start, LocalDateTime end) {}
     private record BiteHourlyScoreDto(
         LocalDateTime timestamp, double score,
         Map<String, Double> breakdown, Map<String, Double> weighted_contribution,
