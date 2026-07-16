@@ -52,6 +52,41 @@ function toHourRange(w: TimeWindow, day: string): HourRange {
   };
 }
 
+interface SafetyAlert {
+  message: string;
+  startMs: number;
+  endMs: number; // exclusive end of the last flagged hour block
+}
+
+/** Group consecutive flagged hours of a day into ranges, per flag message. */
+function safetyAlerts(hours: BiteHourlyScore[]): SafetyAlert[] {
+  const alerts: SafetyAlert[] = [];
+  let open: SafetyAlert | null = null;
+  for (const h of hours) {
+    const startMs = new Date(h.timestamp).getTime();
+    if (h.safetyFlag && open && open.message === h.safetyFlag && open.endMs === startMs) {
+      open.endMs = startMs + 3_600_000;
+    } else {
+      if (open) alerts.push(open);
+      open = h.safetyFlag ? { message: h.safetyFlag, startMs, endMs: startMs + 3_600_000 } : null;
+    }
+  }
+  if (open) alerts.push(open);
+  return alerts;
+}
+
+function formatMs(ms: number) {
+  return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function AlertBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-sm text-red-700">
+      ⚠️ {children}
+    </div>
+  );
+}
+
 function WindowList({ title, windows }: { title: string; windows: TimeWindow[] }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -171,6 +206,15 @@ export default function TimingPage() {
   const majorRanges = selectedDay ? majorToday.map((w) => toHourRange(w, selectedDay)) : [];
   const minorRanges = selectedDay ? minorToday.map((w) => toHourRange(w, selectedDay)) : [];
 
+  const dayAlerts = safetyAlerts(dayHours);
+  const current = forecast?.current;
+  const nowAlert =
+    current && (current.isStorm || current.isHeavyPrecip)
+      ? current.isStorm
+        ? "Storm at your location right now — do not fish through lightning."
+        : "Heavy rain at your location right now — fishing is not recommended."
+      : null;
+
   const sunToday = selectedDay ? forecast?.sunTimes.find((s) => s.date === selectedDay) : undefined;
   const sunMarks = sunToday
     ? [
@@ -233,7 +277,18 @@ export default function TimingPage() {
           </div>
         ) : (
           <>
+            {nowAlert && <AlertBanner>{nowAlert}</AlertBanner>}
+
             <DayStrip days={stripDays} dailyScores={dailyScores} selected={selectedDay} onSelect={setSelectedDay} />
+
+            {dayAlerts.map((a) => (
+              <AlertBanner key={a.startMs}>
+                <span className="font-semibold">
+                  {formatMs(a.startMs)}–{formatMs(a.endMs)}:
+                </span>{" "}
+                {a.message}
+              </AlertBanner>
+            ))}
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
               <p className="text-sm text-gray-500 text-center">

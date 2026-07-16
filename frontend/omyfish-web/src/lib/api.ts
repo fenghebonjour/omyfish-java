@@ -87,6 +87,13 @@ export interface SunTimes {
   sunset: string;
 }
 
+export interface CurrentConditions {
+  time: string;
+  precipitationMm: number;
+  isStorm: boolean;
+  isHeavyPrecip: boolean;
+}
+
 export interface BiteForecast {
   species: string;
   lat: number;
@@ -96,6 +103,7 @@ export interface BiteForecast {
   majorWindows: TimeWindow[]; // per day: windows around the top-2 aggregate-score peaks
   minorWindows: TimeWindow[]; // per day: windows around the next-2 peaks
   sunTimes: SunTimes[]; // per-day sunrise/sunset (drives the dawn/dusk score boost)
+  current: CurrentConditions | null; // live nowcast for "right now" alerts
 }
 
 // species accepts a profile key or any common/scientific name from a

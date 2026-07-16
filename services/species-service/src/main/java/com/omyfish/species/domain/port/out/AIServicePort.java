@@ -25,12 +25,17 @@ public interface AIServicePort {
         List<BiteHourlyScore> bestWindows,
         List<TimeWindow> majorWindows,
         List<TimeWindow> minorWindows,
-        List<SunTimes> sunTimes
+        List<SunTimes> sunTimes,
+        CurrentConditions current
     ) {}
 
     record TimeWindow(LocalDateTime start, LocalDateTime end) {}
 
     record SunTimes(LocalDate date, LocalDateTime sunrise, LocalDateTime sunset) {}
+
+    /** Live nowcast — null when the provider omits it. */
+    record CurrentConditions(
+        LocalDateTime time, double precipitationMm, boolean isStorm, boolean isHeavyPrecip) {}
 
     record BiteHourlyScore(
         LocalDateTime timestamp,

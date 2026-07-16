@@ -72,7 +72,8 @@ public class AIServiceAdapter implements AIServicePort {
             dto.best_windows().stream().map(AIServiceAdapter::toScore).toList(),
             toWindows(dto.major_windows()),
             toWindows(dto.minor_windows()),
-            toSunTimes(dto.sun_times()));
+            toSunTimes(dto.sun_times()),
+            toCurrent(dto.current()));
     }
 
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
@@ -92,15 +93,26 @@ public class AIServiceAdapter implements AIServicePort {
         return sunTimes.stream().map(s -> new SunTimes(s.date(), s.sunrise(), s.sunset())).toList();
     }
 
+    private static CurrentConditions toCurrent(CurrentDto c) {
+        if (c == null) return null;
+        return new CurrentConditions(
+            c.time(),
+            c.precipitation_mm() == null ? 0.0 : c.precipitation_mm(),
+            Boolean.TRUE.equals(c.is_storm()),
+            Boolean.TRUE.equals(c.is_heavy_precip()));
+    }
+
     private record PredictRequest(String image_base64, int top_k) {}
     private record SpeciesKeyResponse(String input, String species_key, boolean matched) {}
     private record BiteForecastDto(
         String species, double lat, double lon,
         List<BiteHourlyScoreDto> hourly, List<BiteHourlyScoreDto> best_windows,
         List<TimeWindowDto> major_windows, List<TimeWindowDto> minor_windows,
-        List<SunTimesDto> sun_times) {}
+        List<SunTimesDto> sun_times, CurrentDto current) {}
     private record TimeWindowDto(LocalDateTime start, LocalDateTime end) {}
     private record SunTimesDto(LocalDate date, LocalDateTime sunrise, LocalDateTime sunset) {}
+    private record CurrentDto(
+        LocalDateTime time, Double precipitation_mm, Boolean is_storm, Boolean is_heavy_precip) {}
     private record BiteHourlyScoreDto(
         LocalDateTime timestamp, double score,
         Map<String, Double> breakdown, Map<String, Double> weighted_contribution,
