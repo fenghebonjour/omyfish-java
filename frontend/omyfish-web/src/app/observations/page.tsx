@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getObservations, type Observation } from "@/lib/api";
+import { deleteObservation, getObservations, type Observation } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 import { ObservationMap } from "@/components/ObservationMap";
 import { BiteScorePanel } from "@/components/BiteScorePanel";
@@ -23,6 +23,16 @@ export default function ObservationsPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [router]);
+
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this observation?")) return;
+    try {
+      await deleteObservation(id);
+      setObservations((prev) => prev.filter((o) => o.id !== id));
+    } catch (e) {
+      alert("Delete failed: " + (e instanceof Error ? e.message : e));
+    }
+  }
 
   if (loading) return <LoadingState />;
 
@@ -48,7 +58,7 @@ export default function ObservationsPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {observations.map((obs) => (
-              <ObservationCard key={obs.id} obs={obs} />
+              <ObservationCard key={obs.id} obs={obs} onDelete={() => handleDelete(obs.id)} />
             ))}
           </div>
         )}
@@ -57,7 +67,7 @@ export default function ObservationsPage() {
   );
 }
 
-function ObservationCard({ obs }: { obs: Observation }) {
+function ObservationCard({ obs, onDelete }: { obs: Observation; onDelete: () => void }) {
   const [showBiteScore, setShowBiteScore] = useState(false);
   const pct = Math.round(obs.topConfidence * 100);
   const barColor = pct >= 85 ? "bg-green-500" : pct >= 50 ? "bg-yellow-400" : "bg-red-400";
@@ -73,6 +83,9 @@ function ObservationCard({ obs }: { obs: Observation }) {
         <div className="text-right">
           <span className="text-sm font-medium text-gray-700">{pct}%</span>
           <p className="text-xs text-gray-400">{new Date(obs.observedAt).toLocaleDateString()}</p>
+          <button onClick={onDelete} className="text-xs text-red-500 hover:text-red-700 mt-1">
+            Delete
+          </button>
         </div>
       </div>
       <div className="w-full bg-gray-100 rounded-full h-1.5">

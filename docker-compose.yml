@@ -154,6 +154,9 @@ services:
       MINIO_SECRET_KEY: omyfish_dev
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
       SPRING_FLYWAY_BASELINE_VERSION: "0"
+      SPECIES_METADATA_PATH: /metadata/fish_info.json
+    volumes:
+      - ../omyfish-python/data/metadata:/metadata:ro
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }

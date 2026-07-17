@@ -33,4 +33,16 @@ public class ObservationRepositoryAdapter implements ObservationRepository {
             .map(ObservationJpaEntity::toDomain)
             .toList();
     }
+
+    @Override
+    public List<Observation> findAllWithLocation() {
+        return jpaRepository.findByLatitudeIsNotNullAndLongitudeIsNotNull().stream()
+            .map(ObservationJpaEntity::toDomain)
+            .toList();
+    }
+
+    @Override
+    public void deleteById(UUID id) {
+        jpaRepository.deleteById(id);
+    }
 }

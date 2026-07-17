@@ -21,6 +21,7 @@ server:
 jwt:
   secret: ${JWT_SECRET:dev-secret-change-in-production-x32}
   expiration-ms: 86400000
+  refresh-expiration-ms: 2592000000
 
 management:
   endpoints:

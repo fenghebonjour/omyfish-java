@@ -5,6 +5,7 @@ import com.omyfish.observation.domain.exception.ObservationNotFoundException;
 import com.omyfish.observation.domain.model.Observation;
 import com.omyfish.observation.domain.model.valueobject.GpsCoordinates;
 import com.omyfish.observation.domain.port.in.CreateObservationUseCase;
+import com.omyfish.observation.domain.port.in.DeleteObservationUseCase;
 import com.omyfish.observation.domain.port.in.GetObservationUseCase;
 import com.omyfish.observation.domain.port.in.ListObservationsUseCase;
 import com.omyfish.observation.domain.port.out.EventPublisherPort;
@@ -14,7 +15,8 @@ import com.omyfish.shared.domain.DomainEvent;
 import java.util.List;
 import java.util.UUID;
 
-public class ObservationService implements CreateObservationUseCase, GetObservationUseCase, ListObservationsUseCase {
+public class ObservationService implements
+    CreateObservationUseCase, GetObservationUseCase, ListObservationsUseCase, DeleteObservationUseCase {
 
     private final ObservationRepository repository;
     private final EventPublisherPort eventPublisher;
@@ -61,5 +63,21 @@ public class ObservationService implements CreateObservationUseCase, GetObservat
     @Override
     public List<Observation> listByUser(UUID userId) {
         return repository.findByUserId(userId);
+    }
+
+    @Override
+    public List<Observation> listWithLocation() {
+        return repository.findAllWithLocation();
+    }
+
+    @Override
+    public boolean delete(UUID id, UUID userId) {
+        return repository.findById(id)
+            .filter(o -> o.getUserId().equals(userId))
+            .map(o -> {
+                repository.deleteById(id);
+                return true;
+            })
+            .orElse(false);
     }
 }

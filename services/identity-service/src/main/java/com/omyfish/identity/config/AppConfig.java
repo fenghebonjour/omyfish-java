@@ -5,7 +5,9 @@ import com.omyfish.identity.adapter.out.persistence.UserRepositoryAdapter;
 import com.omyfish.identity.adapter.out.security.JwtTokenAdapter;
 import com.omyfish.identity.application.service.AuthService;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
+import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
+import com.omyfish.identity.domain.port.in.RefreshTokenUseCase;
 import com.omyfish.identity.domain.port.in.RegisterUseCase;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,6 +43,26 @@ public class AppConfig {
         JwtTokenAdapter tokenPort
     ) {
         return authService(userRepository, apiKeyRepository, passwordEncoder, tokenPort)::login;
+    }
+
+    @Bean
+    public RefreshTokenUseCase refreshTokenUseCase(
+        UserRepositoryAdapter userRepository,
+        ApiKeyRepositoryAdapter apiKeyRepository,
+        PasswordEncoder passwordEncoder,
+        JwtTokenAdapter tokenPort
+    ) {
+        return authService(userRepository, apiKeyRepository, passwordEncoder, tokenPort)::refresh;
+    }
+
+    @Bean
+    public GetCurrentUserUseCase getCurrentUserUseCase(
+        UserRepositoryAdapter userRepository,
+        ApiKeyRepositoryAdapter apiKeyRepository,
+        PasswordEncoder passwordEncoder,
+        JwtTokenAdapter tokenPort
+    ) {
+        return authService(userRepository, apiKeyRepository, passwordEncoder, tokenPort)::me;
     }
 
     @Bean

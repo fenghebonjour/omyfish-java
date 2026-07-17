@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, register } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { setTokens } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function LoginPage() {
         await register(email, password);
       }
       const data = await login(email, password);
-      setToken(data.token);
+      setTokens(data.token, data.refreshToken);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

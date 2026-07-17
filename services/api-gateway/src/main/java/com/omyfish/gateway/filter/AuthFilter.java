@@ -21,10 +21,12 @@ import java.util.List;
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
 
+    // All species endpoints (identify, bite-score, catalog browsing) are public,
+    // matching the dotnet stack; observation GeoJSON is the public map feed.
     private static final List<String> PUBLIC_PREFIXES = List.of(
         "/api/auth/",
-        "/api/v1/species/identify",
-        "/api/v1/species/bite-score"
+        "/api/v1/species",
+        "/api/v1/observations/geojson"
     );
 
     private final SecretKey key;

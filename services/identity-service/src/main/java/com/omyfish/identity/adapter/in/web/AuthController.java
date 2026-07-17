@@ -2,7 +2,9 @@ package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.adapter.in.web.dto.*;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
+import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
+import com.omyfish.identity.domain.port.in.RefreshTokenUseCase;
 import com.omyfish.identity.domain.port.in.RegisterUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,15 +19,21 @@ public class AuthController {
 
     private final RegisterUseCase registerUseCase;
     private final LoginUseCase loginUseCase;
+    private final RefreshTokenUseCase refreshTokenUseCase;
+    private final GetCurrentUserUseCase getCurrentUserUseCase;
     private final CreateApiKeyUseCase createApiKeyUseCase;
 
     public AuthController(
         RegisterUseCase registerUseCase,
         LoginUseCase loginUseCase,
+        RefreshTokenUseCase refreshTokenUseCase,
+        GetCurrentUserUseCase getCurrentUserUseCase,
         CreateApiKeyUseCase createApiKeyUseCase
     ) {
         this.registerUseCase = registerUseCase;
         this.loginUseCase = loginUseCase;
+        this.refreshTokenUseCase = refreshTokenUseCase;
+        this.getCurrentUserUseCase = getCurrentUserUseCase;
         this.createApiKeyUseCase = createApiKeyUseCase;
     }
 
@@ -48,9 +56,36 @@ public class AuthController {
             var result = loginUseCase.login(
                 new LoginUseCase.LoginCommand(request.email(), request.password())
             );
-            return ResponseEntity.ok(
-                new AuthResponse(result.token(), result.userId(), result.email(), result.role())
-            );
+            return ResponseEntity.ok(new AuthResponse(
+                result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
+            ));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
+        }
+    }
+
+    @PostMapping("/auth/refresh")
+    public ResponseEntity<AuthResponse> refresh(@RequestBody RefreshRequest request) {
+        try {
+            var result = refreshTokenUseCase.refresh(request.refreshToken());
+            return ResponseEntity.ok(new AuthResponse(
+                result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
+            ));
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
+        }
+    }
+
+    @GetMapping("/auth/me")
+    public ResponseEntity<MeResponse> me(
+        @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
+        }
+        try {
+            var user = getCurrentUserUseCase.me(authHeader.substring(7));
+            return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
         }
@@ -78,4 +113,6 @@ public class AuthController {
     }
 
     record ApiKeyRequest(String name) {}
+    record RefreshRequest(String refreshToken) {}
+    record MeResponse(UUID userId, String email, String role) {}
 }

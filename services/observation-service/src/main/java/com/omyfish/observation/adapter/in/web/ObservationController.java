@@ -1,9 +1,11 @@
 package com.omyfish.observation.adapter.in.web;
 
 import com.omyfish.observation.adapter.in.web.dto.CreateObservationRequest;
+import com.omyfish.observation.adapter.in.web.dto.GeoJsonResponse;
 import com.omyfish.observation.adapter.in.web.dto.ObservationResponse;
 import com.omyfish.observation.domain.exception.ObservationNotFoundException;
 import com.omyfish.observation.domain.port.in.CreateObservationUseCase;
+import com.omyfish.observation.domain.port.in.DeleteObservationUseCase;
 import com.omyfish.observation.domain.port.in.GetObservationUseCase;
 import com.omyfish.observation.domain.port.in.ListObservationsUseCase;
 import org.springframework.http.ResponseEntity;
@@ -19,15 +21,18 @@ public class ObservationController {
     private final CreateObservationUseCase createObservationUseCase;
     private final GetObservationUseCase getObservationUseCase;
     private final ListObservationsUseCase listObservationsUseCase;
+    private final DeleteObservationUseCase deleteObservationUseCase;
 
     public ObservationController(
         CreateObservationUseCase createObservationUseCase,
         GetObservationUseCase getObservationUseCase,
-        ListObservationsUseCase listObservationsUseCase
+        ListObservationsUseCase listObservationsUseCase,
+        DeleteObservationUseCase deleteObservationUseCase
     ) {
         this.createObservationUseCase = createObservationUseCase;
         this.getObservationUseCase = getObservationUseCase;
         this.listObservationsUseCase = listObservationsUseCase;
+        this.deleteObservationUseCase = deleteObservationUseCase;
     }
 
     @PostMapping
@@ -61,6 +66,21 @@ public class ObservationController {
             .listByUser(UUID.fromString(userIdHeader))
             .stream().map(ObservationResponse::from).toList();
         return ResponseEntity.ok(responses);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+        @PathVariable("id") UUID id,
+        @RequestHeader("X-User-Id") String userIdHeader
+    ) {
+        boolean deleted = deleteObservationUseCase.delete(id, UUID.fromString(userIdHeader));
+        return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+    }
+
+    // Public map data — whitelisted in the gateway AuthFilter, so no X-User-Id here.
+    @GetMapping("/geojson")
+    public ResponseEntity<GeoJsonResponse> geojson() {
+        return ResponseEntity.ok(GeoJsonResponse.from(listObservationsUseCase.listWithLocation()));
     }
 
     @ExceptionHandler(ObservationNotFoundException.class)

@@ -3,7 +3,9 @@ package com.omyfish.identity.application.service;
 import com.omyfish.identity.domain.model.ApiKey;
 import com.omyfish.identity.domain.model.User;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
+import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
+import com.omyfish.identity.domain.port.in.RefreshTokenUseCase;
 import com.omyfish.identity.domain.port.in.RegisterUseCase;
 import com.omyfish.identity.domain.port.out.ApiKeyRepository;
 import com.omyfish.identity.domain.port.out.TokenPort;
@@ -13,7 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-public class AuthService implements RegisterUseCase, LoginUseCase, CreateApiKeyUseCase {
+public class AuthService implements
+    RegisterUseCase, LoginUseCase, RefreshTokenUseCase, GetCurrentUserUseCase, CreateApiKeyUseCase {
 
     private final UserRepository userRepository;
     private final ApiKeyRepository apiKeyRepository;
@@ -51,7 +54,26 @@ public class AuthService implements RegisterUseCase, LoginUseCase, CreateApiKeyU
             throw new IllegalArgumentException("Invalid credentials");
         }
         String token = tokenPort.issue(user.getId(), user.getEmail(), user.getRole());
-        return new LoginResult(token, user.getId(), user.getEmail(), user.getRole());
+        String refreshToken = tokenPort.issueRefresh(user.getId());
+        return new LoginResult(token, refreshToken, user.getId(), user.getEmail(), user.getRole());
+    }
+
+    @Override
+    public RefreshResult refresh(String refreshToken) {
+        User user = tokenPort.validateRefresh(refreshToken)
+            .flatMap(userRepository::findById)
+            .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+        String token = tokenPort.issue(user.getId(), user.getEmail(), user.getRole());
+        String rotated = tokenPort.issueRefresh(user.getId());
+        return new RefreshResult(token, rotated, user.getId(), user.getEmail(), user.getRole());
+    }
+
+    @Override
+    public CurrentUser me(String accessToken) {
+        User user = tokenPort.validateAccess(accessToken)
+            .flatMap(userRepository::findById)
+            .orElseThrow(() -> new IllegalArgumentException("Invalid token"));
+        return new CurrentUser(user.getId(), user.getEmail(), user.getRole());
     }
 
     @Override

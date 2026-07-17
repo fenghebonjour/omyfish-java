@@ -57,17 +57,42 @@ class AuthServiceTest {
     }
 
     @Test
-    void login_validCredentials_returnsToken() {
+    void login_validCredentials_returnsTokenPair() {
         User user = User.create("alice@example.com", "hashed", "USER");
         when(userRepository.findByEmail("alice@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("secret", "hashed")).thenReturn(true);
         when(tokenPort.issue(any(UUID.class), eq("alice@example.com"), eq("USER"))).thenReturn("jwt.token.here");
+        when(tokenPort.issueRefresh(any(UUID.class))).thenReturn("jwt.refresh.here");
 
         var result = authService.login(new LoginCommand("alice@example.com", "secret"));
 
         assertThat(result.token()).isEqualTo("jwt.token.here");
+        assertThat(result.refreshToken()).isEqualTo("jwt.refresh.here");
         assertThat(result.email()).isEqualTo("alice@example.com");
         assertThat(result.role()).isEqualTo("USER");
+    }
+
+    @Test
+    void refresh_validToken_rotatesPair() {
+        User user = User.create("alice@example.com", "hashed", "USER");
+        when(tokenPort.validateRefresh("jwt.refresh.old")).thenReturn(Optional.of(user.getId()));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(tokenPort.issue(user.getId(), "alice@example.com", "USER")).thenReturn("jwt.token.new");
+        when(tokenPort.issueRefresh(user.getId())).thenReturn("jwt.refresh.new");
+
+        var result = authService.refresh("jwt.refresh.old");
+
+        assertThat(result.token()).isEqualTo("jwt.token.new");
+        assertThat(result.refreshToken()).isEqualTo("jwt.refresh.new");
+    }
+
+    @Test
+    void refresh_invalidToken_throwsIllegalArgument() {
+        when(tokenPort.validateRefresh("bogus")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.refresh("bogus"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid refresh token");
     }
 
     @Test

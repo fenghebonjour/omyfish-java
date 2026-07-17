@@ -4,6 +4,7 @@ import com.omyfish.species.domain.model.Species;
 import com.omyfish.species.domain.port.out.SpeciesRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,5 +30,10 @@ public class SpeciesRepositoryAdapter implements SpeciesRepository {
     @Override
     public Optional<Species> findById(UUID id) {
         return jpaRepository.findById(id).map(SpeciesJpaEntity::toDomain);
+    }
+
+    @Override
+    public List<Species> findAll() {
+        return jpaRepository.findAll().stream().map(SpeciesJpaEntity::toDomain).toList();
     }
 }

@@ -151,6 +151,13 @@
                         </annotationProcessorPaths>
                     </configuration>
                 </plugin>
+                <!-- Maven's default surefire (2.x) cannot discover JUnit 5 tests
+                     and silently reports "Tests run: 0" — pin a 3.x version. -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.2.5</version>
+                </plugin>
             </plugins>
         </pluginManagement>
     </build>

@@ -4,7 +4,7 @@ import java.util.UUID;
 
 public interface LoginUseCase {
     record LoginCommand(String email, String password) {}
-    record LoginResult(String token, UUID userId, String email, String role) {}
+    record LoginResult(String token, String refreshToken, UUID userId, String email, String role) {}
 
     LoginResult login(LoginCommand command);
 }

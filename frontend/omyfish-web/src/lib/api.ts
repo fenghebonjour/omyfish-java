@@ -1,4 +1,4 @@
-import { getToken } from "./auth";
+import { getRefreshToken, getToken, setTokens } from "./auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -24,6 +24,14 @@ export async function register(email: string, password: string) {
   return res.json() as Promise<{ userId: string; email: string }>;
 }
 
+export interface AuthResult {
+  token: string;
+  refreshToken: string;
+  userId: string;
+  email: string;
+  role: string;
+}
+
 export async function login(email: string, password: string) {
   const res = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",
@@ -31,7 +39,26 @@ export async function login(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   await checkOk(res);
-  return res.json() as Promise<{ token: string; userId: string; email: string; role: string }>;
+  return res.json() as Promise<AuthResult>;
+}
+
+/** Rotates the stored refresh token into a fresh session; false when that fails. */
+export async function refreshSession(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  try {
+    const res = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as AuthResult;
+    setTokens(data.token, data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Species identification ────────────────────────────────────────────────────
@@ -171,6 +198,41 @@ export async function createObservation(body: {
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
+  await checkOk(res);
+  return res.json();
+}
+
+export async function deleteObservation(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1/observations/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+}
+
+export async function getObservationsGeoJson(): Promise<object> {
+  const res = await fetch(`${API_URL}/api/v1/observations/geojson`);
+  await checkOk(res);
+  return res.json();
+}
+
+// ── Species catalog ───────────────────────────────────────────────────────────
+
+export interface SpeciesInfo {
+  scientificName: string;
+  commonName: string;
+  family: string;
+  conservationStatus: string;
+  habitat: string;
+  geographicRange: string;
+  description: string;
+  northAmericanFreshwater: boolean;
+}
+
+export async function getSpecies(northAmericanFreshwater?: boolean): Promise<SpeciesInfo[]> {
+  const params =
+    northAmericanFreshwater !== undefined ? `?northAmericanFreshwater=${northAmericanFreshwater}` : "";
+  const res = await fetch(`${API_URL}/api/v1/species${params}`);
   await checkOk(res);
   return res.json();
 }

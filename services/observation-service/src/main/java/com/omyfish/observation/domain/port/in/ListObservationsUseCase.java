@@ -6,4 +6,7 @@ import java.util.UUID;
 
 public interface ListObservationsUseCase {
     List<Observation> listByUser(UUID userId);
+
+    /** All located observations — feeds the public GeoJSON map. */
+    List<Observation> listWithLocation();
 }

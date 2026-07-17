@@ -2,6 +2,8 @@ package com.omyfish.species.config;
 
 import com.omyfish.species.application.service.BiteForecastService;
 import com.omyfish.species.application.service.IdentificationService;
+import com.omyfish.species.application.service.SpeciesCatalogService;
+import com.omyfish.species.domain.port.in.BrowseSpeciesUseCase;
 import com.omyfish.species.domain.port.in.GetBiteForecastUseCase;
 import com.omyfish.species.domain.port.in.IdentifyFishUseCase;
 import com.omyfish.species.domain.port.out.AIServicePort;
@@ -25,5 +27,10 @@ public class AppConfig {
     @Bean
     public GetBiteForecastUseCase getBiteForecastUseCase(AIServicePort aiService) {
         return new BiteForecastService(aiService);
+    }
+
+    @Bean
+    public BrowseSpeciesUseCase browseSpeciesUseCase(SpeciesRepository speciesRepository) {
+        return new SpeciesCatalogService(speciesRepository);
     }
 }

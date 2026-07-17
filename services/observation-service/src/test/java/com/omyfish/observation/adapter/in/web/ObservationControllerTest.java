@@ -6,6 +6,7 @@ import com.omyfish.observation.domain.exception.ObservationNotFoundException;
 import com.omyfish.observation.domain.model.Observation;
 import com.omyfish.observation.domain.model.valueobject.GpsCoordinates;
 import com.omyfish.observation.domain.port.in.CreateObservationUseCase;
+import com.omyfish.observation.domain.port.in.DeleteObservationUseCase;
 import com.omyfish.observation.domain.port.in.GetObservationUseCase;
 import com.omyfish.observation.domain.port.in.ListObservationsUseCase;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class ObservationControllerTest {
     @MockBean CreateObservationUseCase createUseCase;
     @MockBean GetObservationUseCase getUseCase;
     @MockBean ListObservationsUseCase listUseCase;
+    @MockBean DeleteObservationUseCase deleteUseCase;
 
     private final UUID userId = UUID.randomUUID();
 

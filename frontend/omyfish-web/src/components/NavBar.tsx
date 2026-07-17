@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearToken, getUserEmail, isLoggedIn } from "@/lib/auth";
+import { clearTokens, getRefreshToken, getUserEmail, isLoggedIn } from "@/lib/auth";
+import { refreshSession } from "@/lib/api";
 
 export function NavBar() {
   const router = useRouter();
@@ -11,11 +12,20 @@ export function NavBar() {
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    setEmail(isLoggedIn() ? getUserEmail() : null);
+    if (isLoggedIn()) {
+      setEmail(getUserEmail());
+      return;
+    }
+    // Access token missing/expired — try a silent refresh before logging out.
+    if (getRefreshToken()) {
+      refreshSession().then((ok) => setEmail(ok ? getUserEmail() : null));
+    } else {
+      setEmail(null);
+    }
   }, [pathname]);
 
   function logout() {
-    clearToken();
+    clearTokens();
     setEmail(null);
     router.push("/login");
   }

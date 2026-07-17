@@ -9,4 +9,6 @@ public interface ObservationRepository {
     Observation save(Observation observation);
     Optional<Observation> findById(UUID id);
     List<Observation> findByUserId(UUID userId);
+    List<Observation> findAllWithLocation();
+    void deleteById(UUID id);
 }
