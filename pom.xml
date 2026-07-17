@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
 
     <name>OMyFish Enterprise Java Platform</name>
-    <description>Enterprise fish species identification platform — Java 21 / Spring Boot 3.x</description>
+    <description>OMyFish — Your AI Fishing Companion. When, Where, What you catch. — Java 21 / Spring Boot 3.x</description>
 
     <modules>
         <module>shared/omyfish-shared-domain</module>

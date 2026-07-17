@@ -77,6 +77,8 @@ Thumbs.db
 # Local docs (not committed)
 docs/BEGINNER_GUIDE.md
 docs/OMyFish-Java-Startup-Strategies.md
+docs/find-pid-by-port.md
+BREAKPOINTS.md
 
 # WSL / Windows download metadata
 *:Zone.Identifier

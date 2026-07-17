@@ -1,6 +1,6 @@
 # OMyFish — Enterprise Java Platform
 
-> Fish species identification platform built on Java 21 + Spring Boot 3.x with Hexagonal Architecture, DDD, and Event-Driven design.
+> **OMyFish — Your AI Fishing Companion.** *When, Where, What you catch.* AI fish identification, GPS-logged observations on a map, and a Bite Score timing forecast — built on Java 21 + Spring Boot 3.x with Hexagonal Architecture, DDD, and Event-Driven design.
 
 > [!NOTE]
 > **Repo reorganization (July 2026):** the OMyFish platform is split into four repos: [omyfish-python](https://github.com/fenghebonjour/omyfish-python) (the AI-first origin, previously named `omyfish` — the old link redirects there), [omyfish-ai](https://github.com/fenghebonjour/omyfish-ai) (standalone AI microservice shared by all), **omyfish-java** (this one), and [omyfish-dotnet](https://github.com/fenghebonjour/omyfish-dotnet).
@@ -61,7 +61,7 @@ omyfish-java/
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
     omyfish-shared-events/    ← FishIdentifiedEvent, ObservationCreatedEvent
-  frontend/omyfish-web/       ← Next.js 15 frontend
+  frontend/omyfish-web/       ← Next.js 15 frontend (/, /timing, /observations, /notifications, /login)
   infrastructure/
     kubernetes/               ← Deployments, HPA, Ingress
     helm/omyfish/             ← Helm chart

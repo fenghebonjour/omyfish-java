@@ -37,7 +37,7 @@ services/
   species-service/              AI orchestration, species KB
   observation-service/          Observation CRUD, EXIF, PostGIS, GeoJSON
   notification-service/         RabbitMQ consumer, notifications
-frontend/omyfish-web/           Next.js 15 + TypeScript
+frontend/omyfish-web/           Next.js 15 + TypeScript (pages: /, /timing, /observations, /notifications, /login)
 infrastructure/
   kubernetes/                   K8s manifests (namespace, deployment, hpa, ingress)
   helm/omyfish/                 Helm chart for all services
@@ -86,7 +86,7 @@ The Python AI service (built from `../omyfish-ai` — see docker-compose.yml) is
 
 Besides fish ID (`POST /predict`), ai-service exposes the Bite Score forecast (`GET /bite-score/forecast|today|species-key`). Bite-score responses always include a six-factor breakdown — pass it through to clients untouched, never reduce it to just the headline score. `GET /bite-score/species-key?name=` maps a confirmed fish ID to the species key to store per user for tuned forecasts.
 
-species-service proxies these at `GET /api/v1/species/bite-score/forecast|today` (`GetBiteForecastUseCase` → `AIServiceAdapter`, which resolves any species name via `/bite-score/species-key`, general fallback; ai-service outages → 503). The path is whitelisted in the gateway's `AuthFilter` PUBLIC_PREFIXES. Frontend: `BiteScorePanel` on each located observation card.
+species-service proxies these at `GET /api/v1/species/bite-score/forecast|today` (`GetBiteForecastUseCase` → `AIServiceAdapter`, which resolves any species name via `/bite-score/species-key`, general fallback; ai-service outages → 503). The path is whitelisted in the gateway's `AuthFilter` PUBLIC_PREFIXES. Frontend: the `/timing` page (`src/app/timing/`, components in `src/components/timing/`) — 7-day outlook strip with 14-day calendar, hourly activity curve, Major/Minor peak windows, storm safety alerts — plus `BiteScorePanel` on each located observation card.
 
 ## Key Spring Dependencies (managed in parent pom.xml)
 
