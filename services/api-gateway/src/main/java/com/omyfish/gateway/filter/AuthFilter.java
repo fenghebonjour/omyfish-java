@@ -55,6 +55,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
                 .parseSignedClaims(authHeader.substring(7))
                 .getPayload();
 
+            // Refresh tokens are signed with the same key but must never
+            // authenticate API calls — they are only valid at /api/auth/refresh.
+            if ("refresh".equals(claims.get("token_type", String.class))) {
+                return reject(exchange, HttpStatus.UNAUTHORIZED);
+            }
+
             ServerWebExchange mutated = exchange.mutate()
                 .request(r -> r
                     .header("X-User-Id", claims.getSubject())
