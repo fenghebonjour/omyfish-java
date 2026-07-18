@@ -111,4 +111,53 @@ class IdentificationServiceTest {
 
         assertThat(service.identify(COMMAND).uncertain()).isTrue();
     }
+
+    @Test
+    void identify_notAFish_neverTouchesCatalogOrPublishes() {
+        // Edge case: a cat photo — rejected upstream by the AI service's CLIP gate.
+        when(aiService.predict("base64img", 3)).thenReturn(new AIResult(List.of(), false));
+
+        IdentificationResult result = service.identify(COMMAND);
+
+        assertThat(result.isFish()).isFalse();
+        assertThat(result.predictions()).isEmpty();
+        assertThat(result.uncertain()).isTrue();
+        verifyNoInteractions(speciesRepository, eventPublisher);
+    }
+
+    @Test
+    void identify_topConfidenceExactlyAtThreshold_notUncertain() {
+        when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
+            List.of(aiPrediction("Sander vitreus", "Walleye", 0.30, 1)), true));
+        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+
+        assertThat(service.identify(COMMAND).uncertain()).isFalse();
+    }
+
+    @Test
+    void identify_lowConfidence_stillPublishesEvent() {
+        // Uncertain results are flagged, not suppressed — the event still fires.
+        when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
+            List.of(aiPrediction("Sander vitreus", "Walleye", 0.12, 1)), true));
+        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+
+        service.identify(COMMAND);
+
+        verify(eventPublisher).publishFishIdentified(
+            any(UUID.class), eq(COMMAND.observationId()), eq(COMMAND.userId()),
+            eq("Walleye"), eq(0.12), anyList(), eq("storage/key.jpg"));
+    }
+
+    @Test
+    void identify_fallbackSpeciesDefaultsConservationStatusWhenAIOmitsIt() {
+        when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
+            List.of(new AIPrediction("Esox masquinongy", "Muskellunge", 0.55, 1,
+                null, null, null, null, null, null)), true));
+        when(speciesRepository.findByScientificName("Esox masquinongy"))
+            .thenReturn(Optional.empty());
+
+        Species created = service.identify(COMMAND).predictions().get(0).getSpecies();
+
+        assertThat(created.getConservationStatus()).isEqualTo("Unknown");
+    }
 }
