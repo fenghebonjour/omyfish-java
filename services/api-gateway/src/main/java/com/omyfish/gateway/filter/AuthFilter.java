@@ -26,12 +26,21 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private static final List<String> PUBLIC_PREFIXES = List.of(
         "/api/auth/",
         "/api/v1/species",
-        "/api/v1/observations/geojson"
+        "/api/v1/observations/geojson",
+        "/api/billing/webhook"  // Stripe calls this; signature-verified in the service
     );
 
     private final SecretKey key;
 
-    public AuthFilter(@Value("${jwt.secret}") String secret) {
+    public AuthFilter(
+        @Value("${jwt.secret}") String secret,
+        org.springframework.core.env.Environment environment
+    ) {
+        boolean prod = java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        if (prod && secret.startsWith("dev-secret")) {
+            throw new IllegalStateException(
+                "JWT_SECRET must be set to a non-default value when the 'prod' profile is active.");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 

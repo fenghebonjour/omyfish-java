@@ -3,7 +3,9 @@ package com.omyfish.identity.application.service;
 import com.omyfish.identity.domain.model.User;
 import com.omyfish.identity.domain.port.in.LoginUseCase.LoginCommand;
 import com.omyfish.identity.domain.port.in.RegisterUseCase.RegisterCommand;
+import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.out.ApiKeyRepository;
+import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.TokenPort;
 import com.omyfish.identity.domain.port.out.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ class AuthServiceTest {
 
     @Mock UserRepository userRepository;
     @Mock ApiKeyRepository apiKeyRepository;
+    @Mock SubscriptionRepository subscriptionRepository;
     @Mock PasswordEncoder passwordEncoder;
     @Mock TokenPort tokenPort;
     @InjectMocks AuthService authService;
@@ -42,6 +45,7 @@ class AuthServiceTest {
         assertThat(result.userId()).isNotNull();
         verify(passwordEncoder).encode("secret");
         verify(userRepository).save(any());
+        verify(subscriptionRepository).save(any(Subscription.class));
     }
 
     @Test

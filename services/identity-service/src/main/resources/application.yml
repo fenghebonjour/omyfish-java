@@ -23,6 +23,16 @@ jwt:
   expiration-ms: 86400000
   refresh-expiration-ms: 2592000000
 
+# Stripe (test keys) — billing endpoints return 503 until these are set
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  price-monthly: ${STRIPE_PRICE_MONTHLY:}   # 5 CAD/month
+  price-yearly: ${STRIPE_PRICE_YEARLY:}     # 29 CAD/year
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:3000}
+
 management:
   endpoints:
     web:

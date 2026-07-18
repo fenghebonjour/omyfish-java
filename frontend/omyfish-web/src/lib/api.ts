@@ -264,3 +264,80 @@ export async function markNotificationRead(id: string): Promise<void> {
   });
   await checkOk(res);
 }
+
+// ── Billing ───────────────────────────────────────────────────────────────────
+
+export interface Subscription {
+  status: string; // trialing | active | canceled | expired
+  plan: string | null;
+  trialEnd: string | null;
+  currentPeriodEnd: string | null;
+}
+
+export async function getMySubscription(): Promise<Subscription> {
+  const res = await fetch(`${API_URL}/api/billing/me`, { headers: authHeaders() });
+  await checkOk(res);
+  return res.json();
+}
+
+export async function createCheckout(plan: "monthly" | "yearly"): Promise<string> {
+  const res = await fetch(`${API_URL}/api/billing/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ plan }),
+  });
+  await checkOk(res);
+  return (await res.json()).checkoutUrl as string;
+}
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+
+export interface AdminStats {
+  trialing: number;
+  active: number;
+  canceled: number;
+  expired: number;
+  activeMonthly: number;
+  activeYearly: number;
+  mrrCad: number;
+}
+
+export interface AdminSubscriptionRow {
+  userId: string;
+  email: string;
+  status: string;
+  plan: string | null;
+  trialEnd: string | null;
+  currentPeriodEnd: string | null;
+}
+
+export async function getAdminStats(): Promise<AdminStats> {
+  const res = await fetch(`${API_URL}/api/admin/stats`, { headers: authHeaders() });
+  await checkOk(res);
+  return res.json();
+}
+
+export async function getAdminSubscriptions(): Promise<AdminSubscriptionRow[]> {
+  const res = await fetch(`${API_URL}/api/admin/subscriptions`, { headers: authHeaders() });
+  await checkOk(res);
+  return res.json();
+}
+
+async function adminPost(path: string, body?: object): Promise<AdminSubscriptionRow> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body ?? {}),
+  });
+  await checkOk(res);
+  return res.json();
+}
+
+export const adminGrant = (userId: string, days = 365, plan = "yearly") =>
+  adminPost(`/api/admin/subscriptions/${userId}/grant`, { days, plan });
+
+export const adminRevoke = (userId: string) =>
+  adminPost(`/api/admin/subscriptions/${userId}/revoke`);
+
+export const adminExtendTrial = (userId: string, days = 7) =>
+  adminPost(`/api/admin/subscriptions/${userId}/extend-trial`, { days });

@@ -51,3 +51,7 @@ export function getUserId(): string | null {
 export function getUserEmail(): string | null {
   return parseJwt(getToken() ?? "")?.email ?? null;
 }
+
+export function getUserRole(): string | null {
+  return parseJwt(getToken() ?? "")?.role ?? null;
+}

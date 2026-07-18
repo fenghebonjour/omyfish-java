@@ -25,7 +25,10 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**", "/actuator/**", "/error").permitAll()
+                // /api/billing/** and /api/admin/** validate their own bearer
+                // tokens in the controllers (same pattern as /api/auth/me).
+                .requestMatchers("/api/auth/**", "/api/billing/**", "/api/admin/**",
+                    "/actuator/**", "/error").permitAll()
                 .anyRequest().authenticated()
             )
             .build();

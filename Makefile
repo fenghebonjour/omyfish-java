@@ -41,7 +41,7 @@ test:
 	  -v omyfish-maven-cache:/root/.m2 \
 	  -w /workspace \
 	  maven:3.9-eclipse-temurin-21-alpine \
-	  mvn test -pl services/identity-service,services/observation-service,services/notification-service --no-transfer-progress
+	  mvn test -pl services/identity-service,services/species-service,services/observation-service,services/notification-service --no-transfer-progress
 
 test-service:
 	docker run --rm \

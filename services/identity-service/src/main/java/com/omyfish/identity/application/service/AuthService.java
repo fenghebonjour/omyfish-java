@@ -7,7 +7,9 @@ import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
 import com.omyfish.identity.domain.port.in.RefreshTokenUseCase;
 import com.omyfish.identity.domain.port.in.RegisterUseCase;
+import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.out.ApiKeyRepository;
+import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.TokenPort;
 import com.omyfish.identity.domain.port.out.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,17 +22,20 @@ public class AuthService implements
 
     private final UserRepository userRepository;
     private final ApiKeyRepository apiKeyRepository;
+    private final SubscriptionRepository subscriptionRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenPort tokenPort;
 
     public AuthService(
         UserRepository userRepository,
         ApiKeyRepository apiKeyRepository,
+        SubscriptionRepository subscriptionRepository,
         PasswordEncoder passwordEncoder,
         TokenPort tokenPort
     ) {
         this.userRepository = userRepository;
         this.apiKeyRepository = apiKeyRepository;
+        this.subscriptionRepository = subscriptionRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenPort = tokenPort;
     }
@@ -43,6 +48,8 @@ public class AuthService implements
         String hash = passwordEncoder.encode(command.password());
         User user = User.create(command.email(), hash, "USER");
         user = userRepository.save(user);
+        subscriptionRepository.save(
+            Subscription.startTrial(user.getId(), BillingService.TRIAL_DAYS));
         return new RegisterResult(user.getId(), user.getEmail());
     }
 

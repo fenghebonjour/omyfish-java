@@ -70,6 +70,7 @@
 │  ValueObj:  HashedPassword  │    │  Event:     FishIdentified   │
 │  Port:      IssueToken      │    │  Port:      IdentifyFish     │
 │  Port:      ValidateToken   │    │  Port:      GetSpecies       │
+│                             │    │  Port:      GetBiteForecast  │
 └─────────────────────────────┘    └──────────────────────────────┘
 
 ┌─────────────────────────────┐    ┌──────────────────────────────┐
@@ -202,6 +203,8 @@ POST /api/v1/species/identify
 
 GET  /api/v1/species/{scientificName}
 GET  /api/v1/species?family=&conservationStatus=&page=&size=
+GET  /api/v1/species/bite-score/forecast?lat=&lon=&species=general&hours=336   (proxied to ai-service, powers the frontend /timing page)
+GET  /api/v1/species/bite-score/today?lat=&lon=&species=general                (proxied to ai-service)
 ```
 
 ### observation-service

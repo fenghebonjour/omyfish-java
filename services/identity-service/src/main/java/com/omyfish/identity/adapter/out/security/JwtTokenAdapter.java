@@ -6,6 +6,7 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -27,8 +28,14 @@ public class JwtTokenAdapter implements TokenPort {
     public JwtTokenAdapter(
         @Value("${jwt.secret}") String secret,
         @Value("${jwt.expiration-ms}") long expirationMs,
-        @Value("${jwt.refresh-expiration-ms:2592000000}") long refreshExpirationMs
+        @Value("${jwt.refresh-expiration-ms:2592000000}") long refreshExpirationMs,
+        Environment environment
     ) {
+        boolean prod = java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        if (prod && secret.startsWith("dev-secret")) {
+            throw new IllegalStateException(
+                "JWT_SECRET must be set to a non-default value when the 'prod' profile is active.");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
         this.refreshExpirationMs = refreshExpirationMs;

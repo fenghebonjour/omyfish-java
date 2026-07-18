@@ -23,7 +23,7 @@ spring:
         - id: identity-service
           uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
           predicates:
-            - Path=/api/auth/**,/api/users/**
+            - Path=/api/auth/**,/api/users/**,/api/billing/**,/api/admin/**
         - id: species-service
           uri: ${SPECIES_SERVICE_URL:http://localhost:8082}
           predicates:
