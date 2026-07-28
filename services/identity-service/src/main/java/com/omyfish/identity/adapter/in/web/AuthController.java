@@ -41,7 +41,7 @@ public class AuthController {
     public ResponseEntity<RegisterResponse> register(@RequestBody RegisterRequest request) {
         try {
             var result = registerUseCase.register(
-                new RegisterUseCase.RegisterCommand(request.email(), request.password())
+                new RegisterUseCase.RegisterCommand(request.email(), request.password(), request.displayName())
             );
             return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RegisterResponse(result.userId(), result.email()));

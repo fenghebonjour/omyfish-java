@@ -46,7 +46,7 @@ public class AuthService implements
             throw new IllegalArgumentException("Email already registered");
         }
         String hash = passwordEncoder.encode(command.password());
-        User user = User.create(command.email(), hash, "USER");
+        User user = User.create(command.email(), hash, "USER", command.displayName());
         user = userRepository.save(user);
         subscriptionRepository.save(
             Subscription.startTrial(user.getId(), BillingService.TRIAL_DAYS));

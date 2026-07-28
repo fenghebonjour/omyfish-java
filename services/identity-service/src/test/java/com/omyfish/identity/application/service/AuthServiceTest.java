@@ -39,7 +39,7 @@ class AuthServiceTest {
         User saved = User.create("alice@example.com", "hashed", "USER");
         when(userRepository.save(any())).thenReturn(saved);
 
-        var result = authService.register(new RegisterCommand("alice@example.com", "secret"));
+        var result = authService.register(new RegisterCommand("alice@example.com", "secret", null));
 
         assertThat(result.email()).isEqualTo("alice@example.com");
         assertThat(result.userId()).isNotNull();
@@ -53,7 +53,7 @@ class AuthServiceTest {
         when(userRepository.existsByEmail("alice@example.com")).thenReturn(true);
 
         assertThatThrownBy(() ->
-            authService.register(new RegisterCommand("alice@example.com", "secret"))
+            authService.register(new RegisterCommand("alice@example.com", "secret", null))
         ).isInstanceOf(IllegalArgumentException.class)
          .hasMessageContaining("already registered");
 

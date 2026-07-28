@@ -29,6 +29,23 @@ public class RabbitMQConfig {
     }
 
     @Bean
+    public TopicExchange speciesExchange() {
+        return new TopicExchange("omyfish.species");
+    }
+
+    @Bean
+    public Queue fishIdentifiedQueue() {
+        return QueueBuilder.durable("omyfish.notifications.fish-identified")
+            .withArgument("x-queue-type", "quorum")
+            .build();
+    }
+
+    @Bean
+    public Binding fishIdentifiedBinding(Queue fishIdentifiedQueue, TopicExchange speciesExchange) {
+        return BindingBuilder.bind(fishIdentifiedQueue).to(speciesExchange).with("fish.identified");
+    }
+
+    @Bean
     public MessageConverter messageConverter() {
         Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
         // Use the listener method parameter type for deserialization instead of __TypeId__ header,

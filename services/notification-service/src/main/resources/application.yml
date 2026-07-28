@@ -29,6 +29,7 @@ omyfish:
   rabbitmq:
     queues:
       observation-created: omyfish.notifications.observation-created
+      fish-identified: omyfish.notifications.fish-identified
 
 management:
   endpoints:
@@ -39,3 +40,6 @@ management:
     export:
       prometheus:
         enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

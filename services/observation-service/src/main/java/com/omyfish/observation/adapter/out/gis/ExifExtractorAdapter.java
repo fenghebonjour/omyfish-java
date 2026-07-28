@@ -1,10 +1,13 @@
 package com.omyfish.observation.adapter.out.gis;
 
 import com.drew.imaging.ImageMetadataReader;
+import com.drew.lang.GeoLocation;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
+import com.drew.metadata.exif.GpsDirectory;
 import com.omyfish.observation.domain.model.valueobject.ExifMetadata;
+import com.omyfish.observation.domain.model.valueobject.GpsCoordinates;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -13,7 +16,9 @@ import java.time.Instant;
 @Component
 public class ExifExtractorAdapter {
 
-    public ExifMetadata extract(InputStream imageStream) {
+    public record Extraction(ExifMetadata metadata, GpsCoordinates gps) {}
+
+    public Extraction extract(InputStream imageStream) {
         try {
             Metadata metadata = ImageMetadataReader.readMetadata(imageStream);
 
@@ -43,9 +48,25 @@ public class ExifExtractorAdapter {
                     : (model != null ? model : make);
             }
 
-            return new ExifMetadata(capturedAt, cameraModel, width, height, focalLength, aperture, iso);
+            GpsDirectory gpsDir = metadata.getFirstDirectoryOfType(GpsDirectory.class);
+            GpsCoordinates gps = GpsCoordinates.unknown();
+            if (gpsDir != null) {
+                GeoLocation location = gpsDir.getGeoLocation();
+                if (location != null) {
+                    try {
+                        gps = GpsCoordinates.of(location.getLatitude(), location.getLongitude());
+                    } catch (IllegalArgumentException e) {
+                        // Invalid coordinates — leave as unknown()
+                    }
+                }
+            }
+
+            return new Extraction(
+                new ExifMetadata(capturedAt, cameraModel, width, height, focalLength, aperture, iso),
+                gps
+            );
         } catch (Exception e) {
-            return ExifMetadata.empty();
+            return new Extraction(ExifMetadata.empty(), GpsCoordinates.unknown());
         }
     }
 }

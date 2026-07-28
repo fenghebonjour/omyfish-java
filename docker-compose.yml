@@ -79,6 +79,7 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on: [prometheus]
     networks: [omyfish-net]
 
