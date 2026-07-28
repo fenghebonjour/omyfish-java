@@ -8,59 +8,50 @@ just Java's slice of it.
 
 ---
 
-## [ ] A1 — Route versioning: move auth/billing/admin under /api/v1
+## [x] A1 — Route versioning: move auth/billing/admin under /api/v1
 
-**Status:** NOT STARTED.
-
-`api-gateway`'s `application.yml` and each controller's `@RequestMapping` route
-`/api/auth/**`, `/api/users/**`, `/api/billing/**`, `/api/admin/**` unversioned,
-while species/observation/notification already use `/api/v1/...`. Family-wide
-decision: adopt .NET's uniform `/api/v1/...` everywhere. Blocks the frontend
-unification work (Workstream C) and the Regs Advisor proxy routes (below) —
-do this first.
+**Status:** DONE (2026-07-28, commit c18c0a2). Gateway predicates, each
+controller's `@RequestMapping`, `AuthFilter`'s public-path whitelist,
+`SecurityConfig`, the frontend's `api.ts`, and `ARCHITECTURE.md`'s stale
+auth-contract docs all updated. 23 identity-service tests + api-gateway
+compile verified green.
 
 ---
 
-## [ ] A3 — Port features .NET already has
+## [x] A3 — Port features .NET already has
 
-**Status:** NOT STARTED.
+**Status:** DONE (2026-07-28, commit 42ec789).
 
-- Add GPS-directory parsing to `ExifExtractorAdapter.java` (reads camera/date/
-  dimensions today, no GPS; .NET's `ExifExtractor.cs` already does this). Leave
-  wiring into observation-create as future work — neither stack wires it in yet.
-- Add `displayName` and `isActive`/deactivation to `User.java` + `RegisterRequest`
-  (Java's own ARCHITECTURE.md already documents `displayName` on register; it
-  was never implemented).
-- Port `.NET`'s `infrastructure/grafana/provisioning/` (dashboard + datasource
-  JSON) so Grafana isn't empty on first `docker compose up`.
-- Add a `FishIdentifiedEvent` queue/consumer to notification-service (.NET has
-  a stub `FishIdentifiedConsumer`; Java has none — bring Java to the same
-  stub-level parity, TODO comment and all).
-
----
-
-## [ ] A4 — Stale docs
-
-**Status:** NOT STARTED.
-
-- `BiteScoreController.forecast`'s default `hours=168` contradicts its own
-  ARCHITECTURE.md (documents 336) and .NET's actual behavior (336). Fix the
-  code to 336.
-- notification-service's ARCHITECTURE.md claims "no REST API — pure event
-  consumer" but it has one (`NotificationController.java`). Fix the doc.
+- GPS-directory parsing added to `ExifExtractorAdapter.java` (still unwired
+  into observation-create in both stacks, as planned).
+- `displayName` + `isActive`/`deactivate()` added to `User.java` +
+  `RegisterRequest` + `RegisterUseCase`; Flyway migration V3 adds the columns.
+- Ported Grafana provisioning, rewritten for Micrometer/Actuator metric names
+  (not ASP.NET's); enabled percentile-histogram export per service so
+  P95/P99 panels have data; swapped .NET's in-flight-requests panel for JVM
+  live threads (no stock equivalent gauge in Spring Boot).
+- `FishIdentifiedConsumer` stub (log + TODO) added to notification-service,
+  with matching exchange/queue/binding beans.
 
 ---
 
-## [ ] B — Proxy the Quebec Regs Advisor feature
+## [x] A4 — Stale docs
 
-**Status:** NOT STARTED. Depends on A1 (route versioning) landing first.
+**Status:** DONE (2026-07-28, commit b8f5a46). Fixed the 168->336 default and
+the notification-service description + RabbitMQ queue-name diagram in
+ARCHITECTURE.md.
 
-All chatbot/retrieval logic lives in `omyfish-ai` (frozen) at `/regs/*`
-(`GET /limits`, `GET /zones/geojson`, `GET /consumption/stations`,
-`GET /consumption`, `POST /ask`). Add a thin proxy in species-service —
-`RegsController` under `/api/v1/regs/*` — following the existing
-`AIServicePort`/`AIServiceAdapter` hexagonal pattern already used for
-bite-score. Register the routes in the gateway.
+---
+
+## [x] B — Proxy the Quebec Regs Advisor feature
+
+**Status:** DONE (2026-07-28, commit b00686f). Implemented at
+`/api/v1/species/regs/*` — **corrected from this file's original
+`/api/v1/regs/*`**: species-service's gateway route only catches
+`/api/v1/species/**`, and .NET's own bite-score proxy is already nested the
+same way (`/api/v1/species/bite-score/...`), so nesting under `/species` avoids
+any gateway config change and matches the existing sibling convention. Same
+correction applies to the dotnet and python-web BACKLOG entries below.
 
 ---
 
