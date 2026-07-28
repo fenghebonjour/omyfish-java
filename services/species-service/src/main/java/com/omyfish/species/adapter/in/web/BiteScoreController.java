@@ -24,7 +24,7 @@ public class BiteScoreController {
         @RequestParam double lat,
         @RequestParam double lon,
         @RequestParam(defaultValue = "general") String species,
-        @RequestParam(defaultValue = "168") int hours
+        @RequestParam(defaultValue = "336") int hours
     ) {
         return ResponseEntity.ok(getBiteForecastUseCase.getForecast(lat, lon, species, hours));
     }

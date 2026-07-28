@@ -76,12 +76,12 @@
 ┌─────────────────────────────┐    ┌──────────────────────────────┐
 │   OBSERVATION CONTEXT       │    │  NOTIFICATION CONTEXT        │
 │                             │    │                              │
-│  Aggregate: Observation     │    │  No domain model —           │
-│  ValueObj:  GpsCoordinates  │    │  pure event consumer.        │
-│  ValueObj:  ExifMetadata    │    │  Dispatches notifications    │
-│  Event:     ObsCreated      │    │  in response to domain       │
-│  Port:      CreateObs       │    │  events from other contexts. │
-│  Port:      ExportGeoJson   │    │                              │
+│  Aggregate: Observation     │    │  Entity:    Notification      │
+│  ValueObj:  GpsCoordinates  │    │  Consumes domain events from  │
+│  ValueObj:  ExifMetadata    │    │  other contexts (RabbitMQ)    │
+│  Event:     ObsCreated      │    │  and exposes them over REST:  │
+│  Port:      CreateObs       │    │  GET /api/v1/notifications    │
+│  Port:      ExportGeoJson   │    │  PUT /{id}/read               │
 └─────────────────────────────┘    └──────────────────────────────┘
 ```
 
@@ -118,7 +118,7 @@ species-service  ──POST /api/v1/species/identify──►  AI Service (HTTP)
       │              exchange: omyfish.species
       │              routing_key: fish.identified
       │              queue: fish.identified.obs  (observation-service)
-      │              queue: fish.identified.notif (notification-service)
+      │              queue: omyfish.notifications.fish-identified (notification-service)
       │              dlq: fish.identified.dlq
       │
       ▼
@@ -129,7 +129,7 @@ observation-service ─── logs result for audit
       ├── publishes: ObservationCreatedEvent
       │              exchange: omyfish.observations
       │              routing_key: observation.created
-      │              queue: observation.created.notif
+      │              queue: omyfish.notifications.observation-created
       │
       ▼
 notification-service ─── sends email / push / webhook
