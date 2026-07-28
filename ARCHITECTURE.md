@@ -222,9 +222,9 @@ DELETE /api/v1/observations/{id}
 ### identity-service
 ```
 POST /api/v1/auth/register  { email, password, displayName }
-POST /api/v1/auth/login     { email, password } → { accessToken, refreshToken }
+POST /api/v1/auth/login     { email, password } → { token, refreshToken, userId, email, role }
 POST /api/v1/auth/refresh   { refreshToken }
-POST /api/v1/auth/api-keys  → { apiKey }
+POST /api/v1/users/{userId}/api-keys  → { keyId, plainKey, name }
 GET  /api/v1/auth/me
 ```
 
@@ -234,13 +234,13 @@ GET  /api/v1/auth/me
 Client
   │── Bearer JWT ──► API Gateway
                           │── validates JWT signature (JJWT, RS256)
-                          │── forwards X-User-Id, X-User-Roles headers
+                          │── forwards X-User-Id, X-User-Email, X-User-Role headers
                           │── rate limits per IP + per user
                           ▼
                   Downstream services
                   (trust gateway headers, no re-validation)
 
-JWT Payload: { sub: userId, email, roles: [...], exp, iat }
+JWT Payload: { sub: userId, email, role, exp, iat }
 API Keys: hashed (bcrypt) in DB, validated in gateway, mapped to userId
 OAuth2/OIDC: Spring Authorization Server for enterprise SSO (Phase 4)
 ```

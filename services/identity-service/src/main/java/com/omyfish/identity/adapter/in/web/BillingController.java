@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/billing")
+@RequestMapping("/api/v1/billing")
 public class BillingController {
 
     private final BillingService billing;

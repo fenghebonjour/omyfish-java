@@ -25,9 +25,9 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // /api/billing/** and /api/admin/** validate their own bearer
-                // tokens in the controllers (same pattern as /api/auth/me).
-                .requestMatchers("/api/auth/**", "/api/billing/**", "/api/admin/**",
+                // /api/v1/billing/** and /api/v1/admin/** validate their own bearer
+                // tokens in the controllers (same pattern as /api/v1/auth/me).
+                .requestMatchers("/api/v1/auth/**", "/api/v1/billing/**", "/api/v1/admin/**",
                     "/actuator/**", "/error").permitAll()
                 .anyRequest().authenticated()
             )

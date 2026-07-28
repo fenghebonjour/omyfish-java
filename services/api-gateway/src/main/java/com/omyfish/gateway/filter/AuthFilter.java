@@ -24,10 +24,10 @@ public class AuthFilter implements GlobalFilter, Ordered {
     // All species endpoints (identify, bite-score, catalog browsing) are public,
     // matching the dotnet stack; observation GeoJSON is the public map feed.
     private static final List<String> PUBLIC_PREFIXES = List.of(
-        "/api/auth/",
+        "/api/v1/auth/",
         "/api/v1/species",
         "/api/v1/observations/geojson",
-        "/api/billing/webhook"  // Stripe calls this; signature-verified in the service
+        "/api/v1/billing/webhook"  // Stripe calls this; signature-verified in the service
     );
 
     private final SecretKey key;
@@ -65,7 +65,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
                 .getPayload();
 
             // Refresh tokens are signed with the same key but must never
-            // authenticate API calls — they are only valid at /api/auth/refresh.
+            // authenticate API calls — they are only valid at /api/v1/auth/refresh.
             if ("refresh".equals(claims.get("token_type", String.class))) {
                 return reject(exchange, HttpStatus.UNAUTHORIZED);
             }

@@ -50,7 +50,7 @@ class AuthControllerTest {
         when(registerUseCase.register(any()))
             .thenReturn(new RegisterResult(UUID.randomUUID(), "alice@example.com"));
 
-        mvc.perform(post("/api/auth/register")
+        mvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(REGISTER_BODY))
             .andExpect(status().isCreated())
@@ -62,7 +62,7 @@ class AuthControllerTest {
         when(registerUseCase.register(any()))
             .thenThrow(new IllegalArgumentException("Email already registered"));
 
-        mvc.perform(post("/api/auth/register")
+        mvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(REGISTER_BODY))
             .andExpect(status().isConflict());
@@ -74,7 +74,7 @@ class AuthControllerTest {
             .thenReturn(new LoginResult(
                 "jwt.token.here", "jwt.refresh.here", UUID.randomUUID(), "alice@example.com", "USER"));
 
-        mvc.perform(post("/api/auth/login")
+        mvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(LOGIN_BODY_VALID))
             .andExpect(status().isOk())
@@ -89,7 +89,7 @@ class AuthControllerTest {
             .thenReturn(new RefreshResult(
                 "jwt.token.new", "jwt.refresh.new", UUID.randomUUID(), "alice@example.com", "USER"));
 
-        mvc.perform(post("/api/auth/refresh")
+        mvc.perform(post("/api/v1/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"refreshToken\":\"jwt.refresh.here\"}"))
             .andExpect(status().isOk())
@@ -102,7 +102,7 @@ class AuthControllerTest {
         when(refreshTokenUseCase.refresh(anyString()))
             .thenThrow(new IllegalArgumentException("Invalid refresh token"));
 
-        mvc.perform(post("/api/auth/refresh")
+        mvc.perform(post("/api/v1/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"refreshToken\":\"bogus\"}"))
             .andExpect(status().isUnauthorized());
@@ -113,14 +113,14 @@ class AuthControllerTest {
         when(getCurrentUserUseCase.me("jwt.token.here"))
             .thenReturn(new CurrentUser(UUID.randomUUID(), "alice@example.com", "USER"));
 
-        mvc.perform(get("/api/auth/me").header("Authorization", "Bearer jwt.token.here"))
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer jwt.token.here"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.email").value("alice@example.com"));
     }
 
     @Test
     void me_missingHeader_returnsUnauthorized() throws Exception {
-        mvc.perform(get("/api/auth/me"))
+        mvc.perform(get("/api/v1/auth/me"))
             .andExpect(status().isUnauthorized());
     }
 
@@ -129,7 +129,7 @@ class AuthControllerTest {
         when(loginUseCase.login(any()))
             .thenThrow(new IllegalArgumentException("Invalid credentials"));
 
-        mvc.perform(post("/api/auth/login")
+        mvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(LOGIN_BODY_WRONG))
             .andExpect(status().isUnauthorized());
