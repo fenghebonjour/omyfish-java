@@ -17,6 +17,38 @@ public interface AIServicePort {
      */
     BiteForecast getBiteForecast(double lat, double lon, String species, int hours);
 
+    /** Quebec fishing zone catch/length limits for the given coordinates. */
+    RegsLimits getRegsLimits(double lat, double lon, String species);
+
+    /** Raw GeoJSON FeatureCollection of the 34 Quebec fishing zone polygons — passed through untouched. */
+    Map<String, Object> getRegsZonesGeoJson();
+
+    /** Nearest consumption-advisory sampling stations to the given coordinates. */
+    List<RegsStation> getRegsConsumptionStations(double lat, double lon, int limit);
+
+    /** Mercury/contaminant consumption advisory (meals/month) for a species + fish size near the given coordinates. */
+    RegsConsumption getRegsConsumption(double lat, double lon, String species, Double sizeCm);
+
+    /** Free-form Quebec fishing regs/tackle Q&A, backed by omyfish-ai's RAG chatbot. */
+    RegsAnswer askRegs(String question);
+
+    record RegsSpeciesLimit(
+        String species, String period, String catchLimit,
+        String lengthLimit, String fishingDevice, String note) {}
+
+    record RegsLimits(
+        double lat, double lon, String zoneName, String zoneInfoUrl,
+        List<RegsSpeciesLimit> rules, String disclaimer) {}
+
+    record RegsStation(
+        String noBqma, String hydronyme, double latitude, double longitude, double distanceKm) {}
+
+    record RegsConsumption(
+        double lat, double lon, String species, String stationName, double distanceKm,
+        String sizeClass, Integer mealsPerMonth, String fishingStatus, String note, String disclaimer) {}
+
+    record RegsAnswer(String question, String answer, List<String> sources, String disclaimer) {}
+
     record BiteForecast(
         String species,
         double lat,

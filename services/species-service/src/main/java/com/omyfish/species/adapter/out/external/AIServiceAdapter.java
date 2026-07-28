@@ -76,6 +76,92 @@ public class AIServiceAdapter implements AIServicePort {
             toCurrent(dto.current()));
     }
 
+    @Override
+    public RegsLimits getRegsLimits(double lat, double lon, String species) {
+        RegsLimitsDto dto = webClient.get()
+            .uri(b -> b.path("/regs/limits")
+                .queryParam("lat", lat)
+                .queryParam("lon", lon)
+                .queryParam("species", species)
+                .build())
+            .retrieve()
+            .bodyToMono(RegsLimitsDto.class)
+            .block();
+        if (dto == null) {
+            throw new IllegalStateException("Empty regs limits response from ai-service");
+        }
+        List<RegsSpeciesLimit> rules = dto.rules().stream()
+            .map(r -> new RegsSpeciesLimit(
+                r.species(), r.period(), r.catch_limit(), r.length_limit(), r.fishing_device(), r.note()))
+            .toList();
+        return new RegsLimits(dto.lat(), dto.lon(), dto.zone_name(), dto.zone_info_url(), rules, dto.disclaimer());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getRegsZonesGeoJson() {
+        Map<String, Object> geoJson = webClient.get()
+            .uri("/regs/zones/geojson")
+            .retrieve()
+            .bodyToMono(Map.class)
+            .block();
+        return geoJson != null ? geoJson : Map.of();
+    }
+
+    @Override
+    public List<RegsStation> getRegsConsumptionStations(double lat, double lon, int limit) {
+        RegsStationDto[] stations = webClient.get()
+            .uri(b -> b.path("/regs/consumption/stations")
+                .queryParam("lat", lat)
+                .queryParam("lon", lon)
+                .queryParam("limit", limit)
+                .build())
+            .retrieve()
+            .bodyToMono(RegsStationDto[].class)
+            .block();
+        if (stations == null) return List.of();
+        return List.of(stations).stream()
+            .map(s -> new RegsStation(s.no_bqma(), s.hydronyme(), s.latitude(), s.longitude(), s.distance_km()))
+            .toList();
+    }
+
+    @Override
+    public RegsConsumption getRegsConsumption(double lat, double lon, String species, Double sizeCm) {
+        RegsConsumptionDto dto = webClient.get()
+            .uri(b -> {
+                var uri = b.path("/regs/consumption")
+                    .queryParam("lat", lat)
+                    .queryParam("lon", lon)
+                    .queryParam("species", species);
+                if (sizeCm != null) uri.queryParam("size_cm", sizeCm);
+                return uri.build();
+            })
+            .retrieve()
+            .bodyToMono(RegsConsumptionDto.class)
+            .block();
+        if (dto == null) {
+            throw new IllegalStateException("Empty regs consumption response from ai-service");
+        }
+        return new RegsConsumption(
+            dto.lat(), dto.lon(), dto.species(), dto.station_name(), dto.distance_km(),
+            dto.size_class(), dto.meals_per_month(), dto.fishing_status(), dto.note(), dto.disclaimer());
+    }
+
+    @Override
+    public RegsAnswer askRegs(String question) {
+        RegsAskResponseDto dto = webClient.post()
+            .uri("/regs/ask")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(new RegsAskRequest(question))
+            .retrieve()
+            .bodyToMono(RegsAskResponseDto.class)
+            .block();
+        if (dto == null) {
+            throw new IllegalStateException("Empty regs ask response from ai-service");
+        }
+        return new RegsAnswer(dto.question(), dto.answer(), dto.sources(), dto.disclaimer());
+    }
+
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
         return new BiteHourlyScore(
             h.timestamp(), h.score(), h.breakdown(), h.weighted_contribution(),
@@ -121,4 +207,18 @@ public class AIServiceAdapter implements AIServicePort {
     private record AIPredictionDto(
         String scientific_name, String common_name, double confidence, int rank, String conservation_status,
         String habitat, String diet, Integer max_size_cm, String description, String fun_fact) {}
+
+    private record RegsSpeciesLimitDto(
+        String species, String period, String catch_limit,
+        String length_limit, String fishing_device, String note) {}
+    private record RegsLimitsDto(
+        double lat, double lon, String zone_name, String zone_info_url,
+        List<RegsSpeciesLimitDto> rules, String disclaimer) {}
+    private record RegsStationDto(
+        String no_bqma, String hydronyme, double latitude, double longitude, double distance_km) {}
+    private record RegsConsumptionDto(
+        double lat, double lon, String species, String station_name, double distance_km,
+        String size_class, Integer meals_per_month, String fishing_status, String note, String disclaimer) {}
+    private record RegsAskRequest(String question) {}
+    private record RegsAskResponseDto(String question, String answer, List<String> sources, String disclaimer) {}
 }
