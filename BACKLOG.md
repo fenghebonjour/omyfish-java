@@ -55,16 +55,15 @@ correction applies to the dotnet and python-web BACKLOG entries below.
 
 ---
 
-## [ ] C — Frontend unification (adopt .NET's architecture as baseline)
+## [x] C — Frontend unification (adopt .NET's architecture as baseline)
 
-**Status:** NOT STARTED. Depends on A1 and B landing (contract + new endpoints
-to build against).
+**Status:** DONE (2026-07-29, commit d200d9a). `frontend/omyfish-web` replaced
+wholesale with the finalized `omyfish-dotnet` baseline — already at the locked
+contract, now with the Regs Advisor UI (chat page, identify info cards,
+toggle-able zones/stations map overlay) and a Next.js security bump
+(15.1.0 → 15.5.22, fixes a critical RCE + ~15 other CVEs). Verified
+byte-identical to `omyfish-dotnet`'s and `omyfish-python-web`'s copies
+(`diff -rq`, excluding node_modules/.next) and with a clean `next build` in
+this repo.
 
-`omyfish-dotnet`'s frontend independently evolved a cleaner pattern
-(`AuthContext`, namespaced `api.*` client, dedicated `/register` page, generic
-`ObservationMap`). Once that baseline is adjusted for Java's field names
-(`token`/`refreshToken`/uppercase role, kept per the family decision) and
-includes the Regs Advisor UI (chat panel, identify-result info cards, map
-zone/station layer), copy it into `frontend/omyfish-web` here, replacing the
-current frontend wholesale (same process used to produce
-`omyfish-python-web`'s copy).
+**All workstreams for this repo are now complete.**
