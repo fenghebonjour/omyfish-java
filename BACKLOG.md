@@ -67,3 +67,39 @@ byte-identical to `omyfish-dotnet`'s and `omyfish-python-web`'s copies
 this repo.
 
 **All workstreams for this repo are now complete.**
+
+---
+
+## [ ] D — Spec-driven contract tests for cross-service boundaries
+
+**Status:** IN PROGRESS (2026-08-01). Piloted on `FishIdentifiedEvent`:
+`shared/omyfish-shared-events/asyncapi/fish-identified.yaml` (AsyncAPI schema,
+source of truth for the event's wire shape) +
+`services/species-service/src/test/java/com/omyfish/species/contract/FishIdentifiedEventContractTest.java`
+(validates the publisher's actual serialized payload against that schema via
+`com.networknt:json-schema-validator`). Verified the test catches drift, not
+just passes trivially — mutation-tested by tightening a schema bound and
+confirming the test fails, then reverting.
+
+**Scoping decision from this session:** apply this only where two
+independently-tested Spring services must agree on something neither one's
+own test suite can verify — i.e. cross-service event contracts and the
+gateway route whitelist. Do **not** extend it to REST APIs like
+species-service/observation-service CRUD, since those currently have exactly
+one consumer (the Next.js frontend, same repo, edited in the same PR) —
+spec+contract-test overhead there would be enforcing agreement between two
+things already changed together, no real drift risk yet.
+
+**Remaining scope:**
+- [ ] `ObservationCreatedEvent` — same treatment (AsyncAPI schema + producer
+  contract test in observation-service).
+- [ ] Consumer-side contract tests for `FishIdentifiedEvent` in
+  observation-service and notification-service (current test only guards the
+  publisher, not either consumer).
+- [ ] Gateway route whitelist vs. actual controller `@RequestMapping`s —
+  needs its own spec artifact (likely a small OpenAPI-path-list check rather
+  than full AsyncAPI) so `AuthFilter.PUBLIC_PREFIXES` can't silently drift
+  from what's actually exposed.
+- [ ] Revisit if a second REST API consumer ever appears (public API, a
+  third service) — that's the trigger to add OpenAPI contract tests for the
+  REST surface too.

@@ -1,0 +1,122 @@
+asyncapi: 2.6.0
+info:
+  title: FishIdentifiedEvent
+  version: 1.0.0
+  description: >
+    Published by species-service when an AI-service prediction completes.
+    Source of truth for the wire shape of com.omyfish.shared.events.FishIdentifiedEvent —
+    producer and consumer contract tests should validate against this file, not against
+    each other's code.
+
+defaultContentType: application/json
+
+servers:
+  rabbitmq:
+    url: '{host}:5672'
+    protocol: amqp
+    variables:
+      host:
+        default: localhost
+
+channels:
+  omyfish.species/fish.identified:
+    description: >
+      Topic exchange "omyfish.species" (durable), routing key "fish.identified".
+      Bound by quorum queues:
+        - omyfish.observations.fish-identified   (consumer: observation-service)
+        - omyfish.notifications.fish-identified  (consumer: notification-service)
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: omyfish.species
+          type: topic
+          durable: true
+        bindingVersion: 0.3.0
+    publish:
+      summary: A fish identification prediction was produced.
+      operationId: fishIdentified
+      message:
+        $ref: '#/components/messages/FishIdentified'
+
+components:
+  messages:
+    FishIdentified:
+      name: FishIdentifiedEvent
+      title: Fish Identified
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/FishIdentifiedEvent'
+
+  schemas:
+    FishIdentifiedEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - occurredOn
+        - predictionId
+        - observationId
+        - userId
+        - topSpeciesName
+        - topConfidence
+        - predictions
+        - imageStorageKey
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Random UUID assigned at construction, string-typed (not a UUID field) on the wire.
+        occurredOn:
+          type: string
+          format: date-time
+          description: Instant.now() at construction, ISO-8601 with offset.
+        predictionId:
+          type: string
+          format: uuid
+        observationId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        topSpeciesName:
+          type: string
+          minLength: 1
+          description: Common name of the #1-ranked prediction.
+        topConfidence:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+          description: Confidence of the #1-ranked prediction (ConfidenceScore invariant, enforced producer-side).
+        predictions:
+          type: array
+          minItems: 1
+          description: Ranked prediction list; element 0 is not guaranteed to be topSpeciesName's entry by index — match on rank.
+          items:
+            $ref: '#/components/schemas/PredictionResult'
+        imageStorageKey:
+          type: string
+          minLength: 1
+
+    PredictionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - speciesName
+        - confidence
+        - rank
+      properties:
+        speciesName:
+          type: string
+          minLength: 1
+        confidence:
+          type: number
+          format: double
+          minimum: 0.0
+          maximum: 1.0
+        rank:
+          type: integer
+          minimum: 1
+          description: 1-based rank within this prediction's result set.
