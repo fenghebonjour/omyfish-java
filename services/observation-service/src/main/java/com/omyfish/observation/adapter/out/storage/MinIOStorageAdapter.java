@@ -1,7 +1,10 @@
 package com.omyfish.observation.adapter.out.storage;
 
+import com.omyfish.observation.domain.exception.ImageStorageException;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +13,8 @@ import java.util.UUID;
 
 @Component
 public class MinIOStorageAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(MinIOStorageAdapter.class);
 
     private final MinioClient minioClient;
     private final String bucket;
@@ -29,7 +34,8 @@ public class MinIOStorageAdapter {
                 .contentType(contentType)
                 .build());
         } catch (Exception e) {
-            throw new RuntimeException("Failed to store image in MinIO", e);
+            log.error("Failed to store image in MinIO: bucket={} key={}", bucket, objectKey, e);
+            throw new ImageStorageException("Failed to store image in MinIO: " + objectKey, e);
         }
         return objectKey;
     }
