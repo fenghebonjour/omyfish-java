@@ -1,6 +1,8 @@
 package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.adapter.in.web.dto.*;
+import com.omyfish.identity.adapter.in.web.support.BearerTokens;
+import com.omyfish.identity.adapter.in.web.support.HttpErrors;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
@@ -9,7 +11,6 @@ import com.omyfish.identity.domain.port.in.RegisterUseCase;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -39,56 +40,39 @@ public class AuthController {
 
     @PostMapping("/auth/register")
     public ResponseEntity<RegisterResponse> register(@RequestBody RegisterRequest request) {
-        try {
-            var result = registerUseCase.register(
-                new RegisterUseCase.RegisterCommand(request.email(), request.password(), request.displayName())
-            );
-            return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new RegisterResponse(result.userId(), result.email()));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
-        }
+        var result = HttpErrors.mapIllegalArgumentTo(HttpStatus.CONFLICT, () -> registerUseCase.register(
+            new RegisterUseCase.RegisterCommand(request.email(), request.password(), request.displayName())
+        ));
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(new RegisterResponse(result.userId(), result.email()));
     }
 
     @PostMapping("/auth/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        try {
-            var result = loginUseCase.login(
-                new LoginUseCase.LoginCommand(request.email(), request.password())
-            );
-            return ResponseEntity.ok(new AuthResponse(
-                result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
-            ));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
-        }
+        var result = HttpErrors.mapIllegalArgumentTo(HttpStatus.UNAUTHORIZED, () -> loginUseCase.login(
+            new LoginUseCase.LoginCommand(request.email(), request.password())
+        ));
+        return ResponseEntity.ok(new AuthResponse(
+            result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
+        ));
     }
 
     @PostMapping("/auth/refresh")
     public ResponseEntity<AuthResponse> refresh(@RequestBody RefreshRequest request) {
-        try {
-            var result = refreshTokenUseCase.refresh(request.refreshToken());
-            return ResponseEntity.ok(new AuthResponse(
-                result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
-            ));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
-        }
+        var result = HttpErrors.mapIllegalArgumentTo(
+            HttpStatus.UNAUTHORIZED, () -> refreshTokenUseCase.refresh(request.refreshToken()));
+        return ResponseEntity.ok(new AuthResponse(
+            result.token(), result.refreshToken(), result.userId(), result.email(), result.role()
+        ));
     }
 
     @GetMapping("/auth/me")
     public ResponseEntity<MeResponse> me(
         @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
-        }
-        try {
-            var user = getCurrentUserUseCase.me(authHeader.substring(7));
-            return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
-        }
+        String token = BearerTokens.require(authHeader);
+        var user = HttpErrors.mapIllegalArgumentTo(HttpStatus.UNAUTHORIZED, () -> getCurrentUserUseCase.me(token));
+        return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
     }
 
     @PostMapping("/users/{userId}/api-keys")
@@ -96,15 +80,11 @@ public class AuthController {
         @PathVariable UUID userId,
         @RequestBody ApiKeyRequest request
     ) {
-        try {
-            var result = createApiKeyUseCase.createApiKey(
-                new CreateApiKeyUseCase.CreateApiKeyCommand(userId, request.name())
-            );
-            return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ApiKeyResponse(result.keyId(), result.plainKey(), result.name()));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+        var result = HttpErrors.mapIllegalArgumentTo(HttpStatus.NOT_FOUND, () -> createApiKeyUseCase.createApiKey(
+            new CreateApiKeyUseCase.CreateApiKeyCommand(userId, request.name())
+        ));
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(new ApiKeyResponse(result.keyId(), result.plainKey(), result.name()));
     }
 
     @GetMapping("/auth/health")

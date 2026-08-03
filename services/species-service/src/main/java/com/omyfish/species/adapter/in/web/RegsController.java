@@ -1,8 +1,8 @@
 package com.omyfish.species.adapter.in.web;
 
+import com.omyfish.species.adapter.in.web.support.AiServiceUnavailable;
 import com.omyfish.species.domain.port.in.GetRegsAdvisorUseCase;
 import com.omyfish.species.domain.port.out.AIServicePort;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
@@ -65,9 +65,8 @@ public class RegsController {
 
     @ExceptionHandler({WebClientRequestException.class, IllegalStateException.class})
     ResponseEntity<Map<String, String>> handleAiServiceDown() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-            "error", "AI service unavailable",
-            "detail", "The regs advisor is unreachable or its data provider is down. Try again shortly."));
+        return AiServiceUnavailable.response(
+            "The regs advisor is unreachable or its data provider is down. Try again shortly.");
     }
 
     record AskRequest(String question) {}

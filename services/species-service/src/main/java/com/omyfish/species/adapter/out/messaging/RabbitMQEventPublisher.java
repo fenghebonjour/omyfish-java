@@ -1,6 +1,7 @@
 package com.omyfish.species.adapter.out.messaging;
 
 import com.omyfish.shared.events.FishIdentifiedEvent;
+import com.omyfish.shared.messaging.RabbitTopology;
 import com.omyfish.species.domain.model.Prediction;
 import com.omyfish.species.domain.port.out.EventPublisherPort;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -39,6 +40,7 @@ public class RabbitMQEventPublisher implements EventPublisherPort {
             topSpeciesName, topConfidence, results, imageStorageKey
         );
 
-        rabbitTemplate.convertAndSend(FishIdentifiedEvent.EXCHANGE, FishIdentifiedEvent.ROUTING_KEY, event);
+        rabbitTemplate.convertAndSend(
+            RabbitTopology.SPECIES_EXCHANGE, RabbitTopology.FISH_IDENTIFIED_ROUTING_KEY, event);
     }
 }

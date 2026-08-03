@@ -1,8 +1,10 @@
 package com.omyfish.notification.config;
 
-import org.springframework.amqp.core.*;
+import com.omyfish.shared.messaging.RabbitTopology;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.annotation.EnableRabbit;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,44 +15,37 @@ public class RabbitMQConfig {
 
     @Bean
     public TopicExchange observationsExchange() {
-        return new TopicExchange("omyfish.observations");
+        return RabbitTopology.observationsExchange();
     }
 
     @Bean
     public Queue observationCreatedQueue() {
-        return QueueBuilder.durable("omyfish.notifications.observation-created")
-            .withArgument("x-queue-type", "quorum")
-            .build();
+        return RabbitTopology.quorumQueue("omyfish.notifications.observation-created");
     }
 
     @Bean
     public Binding observationCreatedBinding(Queue observationCreatedQueue, TopicExchange observationsExchange) {
-        return BindingBuilder.bind(observationCreatedQueue).to(observationsExchange).with("observation.created");
+        return RabbitTopology.bind(
+            observationCreatedQueue, observationsExchange, RabbitTopology.OBSERVATION_CREATED_ROUTING_KEY);
     }
 
     @Bean
     public TopicExchange speciesExchange() {
-        return new TopicExchange("omyfish.species");
+        return RabbitTopology.speciesExchange();
     }
 
     @Bean
     public Queue fishIdentifiedQueue() {
-        return QueueBuilder.durable("omyfish.notifications.fish-identified")
-            .withArgument("x-queue-type", "quorum")
-            .build();
+        return RabbitTopology.quorumQueue("omyfish.notifications.fish-identified");
     }
 
     @Bean
     public Binding fishIdentifiedBinding(Queue fishIdentifiedQueue, TopicExchange speciesExchange) {
-        return BindingBuilder.bind(fishIdentifiedQueue).to(speciesExchange).with("fish.identified");
+        return RabbitTopology.bind(fishIdentifiedQueue, speciesExchange, RabbitTopology.FISH_IDENTIFIED_ROUTING_KEY);
     }
 
     @Bean
     public MessageConverter messageConverter() {
-        Jackson2JsonMessageConverter converter = new Jackson2JsonMessageConverter();
-        // Use the listener method parameter type for deserialization instead of __TypeId__ header,
-        // so the sender's fully-qualified class name doesn't need to be on this classpath.
-        converter.setTypePrecedence(org.springframework.amqp.support.converter.Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
-        return converter;
+        return RabbitTopology.jsonMessageConverter();
     }
 }

@@ -61,6 +61,8 @@ omyfish-java/
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
     omyfish-shared-events/    ← FishIdentifiedEvent, ObservationCreatedEvent
+    omyfish-shared-messaging/ ← RabbitTopology (exchanges, routing keys, quorum queues)
+    omyfish-shared-storage/   ← MinioObjectStorage (bucket + image upload)
   frontend/omyfish-web/       ← Next.js 15 frontend (/, /timing, /observations, /notifications, /login)
   infrastructure/
     kubernetes/               ← Deployments, HPA, Ingress

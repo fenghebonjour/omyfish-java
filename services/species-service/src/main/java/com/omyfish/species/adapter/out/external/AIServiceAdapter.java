@@ -7,10 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
 
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 @Component
 public class AIServiceAdapter implements AIServicePort {
@@ -23,13 +25,7 @@ public class AIServiceAdapter implements AIServicePort {
 
     @Override
     public AIResult predict(String imageBase64, int topK) {
-        AIResponse response = webClient.post()
-            .uri("/predict")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(new PredictRequest(imageBase64, topK))
-            .retrieve()
-            .bodyToMono(AIResponse.class)
-            .block();
+        AIResponse response = post("/predict", new PredictRequest(imageBase64, topK), AIResponse.class);
 
         if (response == null) return new AIResult(List.of(), true);
 
@@ -45,27 +41,18 @@ public class AIServiceAdapter implements AIServicePort {
     public BiteForecast getBiteForecast(double lat, double lon, String species, int hours) {
         // Resolve first so callers can pass a confirmed fish-ID name directly;
         // unknown species fall back to the "general" profile instead of a 400.
-        SpeciesKeyResponse keyResponse = webClient.get()
-            .uri(b -> b.path("/bite-score/species-key").queryParam("name", species).build())
-            .retrieve()
-            .bodyToMono(SpeciesKeyResponse.class)
-            .block();
+        SpeciesKeyResponse keyResponse = get(
+            b -> b.path("/bite-score/species-key").queryParam("name", species).build(), SpeciesKeyResponse.class);
         String speciesKey = keyResponse != null ? keyResponse.species_key() : "general";
 
-        BiteForecastDto dto = webClient.get()
-            .uri((UriBuilder b) -> b.path("/bite-score/forecast")
+        BiteForecastDto dto = required(get(
+            b -> b.path("/bite-score/forecast")
                 .queryParam("lat", lat)
                 .queryParam("lon", lon)
                 .queryParam("species", speciesKey)
                 .queryParam("hours", hours)
-                .build())
-            .retrieve()
-            .bodyToMono(BiteForecastDto.class)
-            .block();
-
-        if (dto == null) {
-            throw new IllegalStateException("Empty bite-score response from ai-service");
-        }
+                .build(),
+            BiteForecastDto.class), "bite-score");
         return new BiteForecast(
             dto.species(), dto.lat(), dto.lon(),
             dto.hourly().stream().map(AIServiceAdapter::toScore).toList(),
@@ -78,18 +65,13 @@ public class AIServiceAdapter implements AIServicePort {
 
     @Override
     public RegsLimits getRegsLimits(double lat, double lon, String species) {
-        RegsLimitsDto dto = webClient.get()
-            .uri(b -> b.path("/regs/limits")
+        RegsLimitsDto dto = required(get(
+            b -> b.path("/regs/limits")
                 .queryParam("lat", lat)
                 .queryParam("lon", lon)
                 .queryParam("species", species)
-                .build())
-            .retrieve()
-            .bodyToMono(RegsLimitsDto.class)
-            .block();
-        if (dto == null) {
-            throw new IllegalStateException("Empty regs limits response from ai-service");
-        }
+                .build(),
+            RegsLimitsDto.class), "regs limits");
         List<RegsSpeciesLimit> rules = dto.rules().stream()
             .map(r -> new RegsSpeciesLimit(
                 r.species(), r.period(), r.catch_limit(), r.length_limit(), r.fishing_device(), r.note()))
@@ -100,25 +82,19 @@ public class AIServiceAdapter implements AIServicePort {
     @Override
     @SuppressWarnings("unchecked")
     public Map<String, Object> getRegsZonesGeoJson() {
-        Map<String, Object> geoJson = webClient.get()
-            .uri("/regs/zones/geojson")
-            .retrieve()
-            .bodyToMono(Map.class)
-            .block();
+        Map<String, Object> geoJson = get(b -> b.path("/regs/zones/geojson").build(), Map.class);
         return geoJson != null ? geoJson : Map.of();
     }
 
     @Override
     public List<RegsStation> getRegsConsumptionStations(double lat, double lon, int limit) {
-        RegsStationDto[] stations = webClient.get()
-            .uri(b -> b.path("/regs/consumption/stations")
+        RegsStationDto[] stations = get(
+            b -> b.path("/regs/consumption/stations")
                 .queryParam("lat", lat)
                 .queryParam("lon", lon)
                 .queryParam("limit", limit)
-                .build())
-            .retrieve()
-            .bodyToMono(RegsStationDto[].class)
-            .block();
+                .build(),
+            RegsStationDto[].class);
         if (stations == null) return List.of();
         return List.of(stations).stream()
             .map(s -> new RegsStation(s.no_bqma(), s.hydronyme(), s.latitude(), s.longitude(), s.distance_km()))
@@ -127,21 +103,16 @@ public class AIServiceAdapter implements AIServicePort {
 
     @Override
     public RegsConsumption getRegsConsumption(double lat, double lon, String species, Double sizeCm) {
-        RegsConsumptionDto dto = webClient.get()
-            .uri(b -> {
+        RegsConsumptionDto dto = required(get(
+            b -> {
                 var uri = b.path("/regs/consumption")
                     .queryParam("lat", lat)
                     .queryParam("lon", lon)
                     .queryParam("species", species);
                 if (sizeCm != null) uri.queryParam("size_cm", sizeCm);
                 return uri.build();
-            })
-            .retrieve()
-            .bodyToMono(RegsConsumptionDto.class)
-            .block();
-        if (dto == null) {
-            throw new IllegalStateException("Empty regs consumption response from ai-service");
-        }
+            },
+            RegsConsumptionDto.class), "regs consumption");
         return new RegsConsumption(
             dto.lat(), dto.lon(), dto.species(), dto.station_name(), dto.distance_km(),
             dto.size_class(), dto.meals_per_month(), dto.fishing_status(), dto.note(), dto.disclaimer());
@@ -149,17 +120,34 @@ public class AIServiceAdapter implements AIServicePort {
 
     @Override
     public RegsAnswer askRegs(String question) {
-        RegsAskResponseDto dto = webClient.post()
-            .uri("/regs/ask")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(new RegsAskRequest(question))
-            .retrieve()
-            .bodyToMono(RegsAskResponseDto.class)
-            .block();
-        if (dto == null) {
-            throw new IllegalStateException("Empty regs ask response from ai-service");
-        }
+        RegsAskResponseDto dto = required(
+            post("/regs/ask", new RegsAskRequest(question), RegsAskResponseDto.class), "regs ask");
         return new RegsAnswer(dto.question(), dto.answer(), dto.sources(), dto.disclaimer());
+    }
+
+    private <T> T get(Function<UriBuilder, URI> uri, Class<T> responseType) {
+        return webClient.get()
+            .uri(uri)
+            .retrieve()
+            .bodyToMono(responseType)
+            .block();
+    }
+
+    private <T> T post(String path, Object body, Class<T> responseType) {
+        return webClient.post()
+            .uri(path)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(body)
+            .retrieve()
+            .bodyToMono(responseType)
+            .block();
+    }
+
+    private static <T> T required(T response, String what) {
+        if (response == null) {
+            throw new IllegalStateException("Empty " + what + " response from ai-service");
+        }
+        return response;
     }
 
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
