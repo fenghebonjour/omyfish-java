@@ -77,10 +77,23 @@ class ObservationControllerTest {
             0.80, "img.jpg", GpsCoordinates.of(51.5, -0.1), null, "river catch");
         when(getUseCase.get(id)).thenReturn(obs);
 
-        mvc.perform(get("/api/v1/observations/{id}", id))
+        mvc.perform(get("/api/v1/observations/{id}", id)
+                .header("X-User-Id", userId.toString()))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.speciesName").value("Brown Trout"))
             .andExpect(jsonPath("$.latitude").value(51.5));
+    }
+
+    @Test
+    void getObservation_ownedByAnotherUser_returns404() throws Exception {
+        UUID id = UUID.randomUUID();
+        Observation obs = Observation.create(UUID.randomUUID(), "Brown Trout", "Salmo trutta",
+            0.80, "img.jpg", GpsCoordinates.of(51.5, -0.1), null, "river catch");
+        when(getUseCase.get(id)).thenReturn(obs);
+
+        mvc.perform(get("/api/v1/observations/{id}", id)
+                .header("X-User-Id", userId.toString()))
+            .andExpect(status().isNotFound());
     }
 
     @Test
@@ -88,7 +101,8 @@ class ObservationControllerTest {
         UUID id = UUID.randomUUID();
         when(getUseCase.get(id)).thenThrow(new ObservationNotFoundException(id));
 
-        mvc.perform(get("/api/v1/observations/{id}", id))
+        mvc.perform(get("/api/v1/observations/{id}", id)
+                .header("X-User-Id", userId.toString()))
             .andExpect(status().isNotFound());
     }
 

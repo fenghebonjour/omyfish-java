@@ -12,6 +12,8 @@ import java.util.UUID;
 @Component
 public class MinIOStorageAdapter implements StoragePort {
 
+    private static final String DEFAULT_EXTENSION = ".jpg";
+
     private final MinioClient minioClient;
     private final String bucket;
 
@@ -41,10 +43,7 @@ public class MinIOStorageAdapter implements StoragePort {
 
     @Override
     public String store(InputStream data, long size, String contentType, String originalFilename) {
-        String ext = (originalFilename != null && originalFilename.contains("."))
-            ? originalFilename.substring(originalFilename.lastIndexOf('.'))
-            : ".jpg";
-        String key = "uploads/" + UUID.randomUUID() + ext;
+        String key = "uploads/" + UUID.randomUUID() + extensionOf(originalFilename);
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
@@ -58,5 +57,21 @@ public class MinIOStorageAdapter implements StoragePort {
             throw new RuntimeException("Failed to store image in MinIO", e);
         }
         return key;
+    }
+
+    /**
+     * Derives a safe object-key suffix from a client-supplied filename: only a short
+     * alphanumeric extension is kept, so separators cannot escape the uploads prefix.
+     */
+    private static String extensionOf(String originalFilename) {
+        if (originalFilename == null) {
+            return DEFAULT_EXTENSION;
+        }
+        int dot = originalFilename.lastIndexOf('.');
+        if (dot < 0) {
+            return DEFAULT_EXTENSION;
+        }
+        String ext = originalFilename.substring(dot + 1).toLowerCase();
+        return ext.matches("[a-z0-9]{1,8}") ? "." + ext : DEFAULT_EXTENSION;
     }
 }
