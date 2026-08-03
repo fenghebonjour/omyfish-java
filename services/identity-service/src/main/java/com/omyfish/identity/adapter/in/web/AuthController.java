@@ -12,10 +12,15 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/v1")
 public class AuthController {
+
+    private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s.]+\\.[^@\\s]+$");
+    private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final int MAX_FIELD_LENGTH = 255;
 
     private final RegisterUseCase registerUseCase;
     private final LoginUseCase loginUseCase;
@@ -39,6 +44,7 @@ public class AuthController {
 
     @PostMapping("/auth/register")
     public ResponseEntity<RegisterResponse> register(@RequestBody RegisterRequest request) {
+        validateRegistration(request);
         try {
             var result = registerUseCase.register(
                 new RegisterUseCase.RegisterCommand(request.email(), request.password(), request.displayName())
@@ -80,12 +86,31 @@ public class AuthController {
     public ResponseEntity<MeResponse> me(
         @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
+        var user = requireCaller(authHeader);
+        return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
+    }
+
+    private void validateRegistration(RegisterRequest request) {
+        if (request.email() == null || !EMAIL.matcher(request.email()).matches()
+            || request.email().length() > MAX_FIELD_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid email is required");
+        }
+        if (request.password() == null || request.password().length() < MIN_PASSWORD_LENGTH
+            || request.password().length() > MAX_FIELD_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Password must be between " + MIN_PASSWORD_LENGTH + " and " + MAX_FIELD_LENGTH + " characters");
+        }
+        if (request.displayName() != null && request.displayName().length() > MAX_FIELD_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name is too long");
+        }
+    }
+
+    private GetCurrentUserUseCase.CurrentUser requireCaller(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
         }
         try {
-            var user = getCurrentUserUseCase.me(authHeader.substring(7));
-            return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
+            return getCurrentUserUseCase.me(authHeader.substring(7));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
         }
@@ -94,8 +119,13 @@ public class AuthController {
     @PostMapping("/users/{userId}/api-keys")
     public ResponseEntity<ApiKeyResponse> createApiKey(
         @PathVariable UUID userId,
-        @RequestBody ApiKeyRequest request
+        @RequestBody ApiKeyRequest request,
+        @RequestHeader(value = "Authorization", required = false) String authHeader
     ) {
+        var caller = requireCaller(authHeader);
+        if (!caller.userId().equals(userId) && !"ADMIN".equalsIgnoreCase(caller.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot create API keys for another user");
+        }
         try {
             var result = createApiKeyUseCase.createApiKey(
                 new CreateApiKeyUseCase.CreateApiKeyCommand(userId, request.name())
