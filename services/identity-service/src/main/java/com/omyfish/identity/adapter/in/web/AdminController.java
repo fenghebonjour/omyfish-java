@@ -1,5 +1,7 @@
 package com.omyfish.identity.adapter.in.web;
 
+import com.omyfish.identity.adapter.in.web.support.BearerTokens;
+import com.omyfish.identity.adapter.in.web.support.HttpErrors;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
@@ -29,16 +31,10 @@ public class AdminController {
     }
 
     private void requireAdmin(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
-        }
-        try {
-            var user = currentUser.me(authHeader.substring(7));
-            if (!"ADMIN".equalsIgnoreCase(user.role())) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin only");
-            }
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
+        String token = BearerTokens.require(authHeader);
+        var user = HttpErrors.mapIllegalArgumentTo(HttpStatus.UNAUTHORIZED, () -> currentUser.me(token));
+        if (!"ADMIN".equalsIgnoreCase(user.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin only");
         }
     }
 
@@ -76,11 +72,7 @@ public class AdminController {
         @PathVariable UUID userId
     ) {
         requireAdmin(authHeader);
-        try {
-            return row(billing.revoke(userId));
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+        return row(HttpErrors.mapIllegalArgumentTo(HttpStatus.NOT_FOUND, () -> billing.revoke(userId)));
     }
 
     @PostMapping("/subscriptions/{userId}/extend-trial")

@@ -1,5 +1,7 @@
 package com.omyfish.identity.adapter.in.web;
 
+import com.omyfish.identity.adapter.in.web.support.BearerTokens;
+import com.omyfish.identity.adapter.in.web.support.HttpErrors;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.out.PaymentPort;
@@ -28,10 +30,7 @@ public class BillingController {
     }
 
     private UUID requireUser(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
-        }
-        return tokenPort.validateAccess(authHeader.substring(7))
+        return tokenPort.validateAccess(BearerTokens.require(authHeader))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token"));
     }
 
@@ -48,14 +47,11 @@ public class BillingController {
         @RequestBody CheckoutRequest request
     ) {
         UUID userId = requireUser(authHeader);
-        try {
-            String url = billing.checkoutUrl(userId, request.plan())
+        String url = HttpErrors.mapIllegalArgumentTo(HttpStatus.BAD_REQUEST,
+            () -> billing.checkoutUrl(userId, request.plan())
                 .orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
-            return Map.of("checkoutUrl", url);
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+                    HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured")));
+        return Map.of("checkoutUrl", url);
     }
 
     @PostMapping("/webhook")

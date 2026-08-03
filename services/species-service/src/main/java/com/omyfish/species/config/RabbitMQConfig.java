@@ -1,7 +1,9 @@
 package com.omyfish.species.config;
 
-import org.springframework.amqp.core.*;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import com.omyfish.shared.messaging.RabbitTopology;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,23 +13,21 @@ public class RabbitMQConfig {
 
     @Bean
     public TopicExchange speciesExchange() {
-        return new TopicExchange("omyfish.species");
+        return RabbitTopology.speciesExchange();
     }
 
     @Bean
     public Queue fishIdentifiedQueue() {
-        return QueueBuilder.durable("omyfish.species.fish-identified")
-            .withArgument("x-queue-type", "quorum")
-            .build();
+        return RabbitTopology.quorumQueue("omyfish.species.fish-identified");
     }
 
     @Bean
     public Binding fishIdentifiedBinding(Queue fishIdentifiedQueue, TopicExchange speciesExchange) {
-        return BindingBuilder.bind(fishIdentifiedQueue).to(speciesExchange).with("fish.identified");
+        return RabbitTopology.bind(fishIdentifiedQueue, speciesExchange, RabbitTopology.FISH_IDENTIFIED_ROUTING_KEY);
     }
 
     @Bean
     public MessageConverter messageConverter() {
-        return new Jackson2JsonMessageConverter();
+        return RabbitTopology.jsonMessageConverter();
     }
 }

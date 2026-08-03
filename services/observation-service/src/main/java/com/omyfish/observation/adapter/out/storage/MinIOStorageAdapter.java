@@ -1,36 +1,24 @@
 package com.omyfish.observation.adapter.out.storage;
 
+import com.omyfish.shared.storage.MinioObjectStorage;
 import io.minio.MinioClient;
-import io.minio.PutObjectArgs;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
-import java.util.UUID;
 
 @Component
 public class MinIOStorageAdapter {
 
-    private final MinioClient minioClient;
-    private final String bucket;
+    private static final String KEY_PREFIX = "observations/";
+
+    private final MinioObjectStorage storage;
 
     public MinIOStorageAdapter(MinioClient minioClient, @Value("${minio.bucket}") String bucket) {
-        this.minioClient = minioClient;
-        this.bucket = bucket;
+        this.storage = new MinioObjectStorage(minioClient, bucket);
     }
 
     public String store(InputStream data, String contentType) {
-        String objectKey = "observations/" + UUID.randomUUID() + ".jpg";
-        try {
-            minioClient.putObject(PutObjectArgs.builder()
-                .bucket(bucket)
-                .object(objectKey)
-                .stream(data, -1, 10 * 1024 * 1024)
-                .contentType(contentType)
-                .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to store image in MinIO", e);
-        }
-        return objectKey;
+        return storage.store(KEY_PREFIX, data, -1, contentType, null);
     }
 }

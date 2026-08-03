@@ -31,6 +31,8 @@ pom.xml                         parent POM — dependency management
 shared/
   omyfish-shared-domain/        Entity, AggregateRoot, DomainEvent, ValueObject
   omyfish-shared-events/        FishIdentifiedEvent, ObservationCreatedEvent
+  omyfish-shared-messaging/     RabbitTopology — exchanges, routing keys, quorum queues, JSON converter
+  omyfish-shared-storage/       MinioObjectStorage — bucket creation + image upload
 services/
   api-gateway/                  Spring Cloud Gateway — routes, auth filter
   identity-service/             JWT issuance, user registration, API keys
