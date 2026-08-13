@@ -1,9 +1,9 @@
 # OMyFish — Enterprise Java Platform
 
-> **OMyFish — Your AI Fishing Companion.** *When, Where, What you catch.* AI fish identification, GPS-logged observations on a map, and a Bite Score timing forecast — built on Java 21 + Spring Boot 3.x with Hexagonal Architecture, DDD, and Event-Driven design.
+> **OMyFish — Your AI Fishing Companion.** *When, Where, What you catch.* A Bite Score timing forecast for **when** to fish, AI fish identification with GPS-logged observations on a map for **where** fish are being caught, and a Regs & Tips chatbot (powered by Groq) for **what** you can legally keep — built on Java 21 + Spring Boot 3.x with Hexagonal Architecture, DDD, and Event-Driven design.
 
 > [!NOTE]
-> **Repo reorganization (July 2026):** the OMyFish platform is split into four repos: [omyfish-python](https://github.com/fenghebonjour/omyfish-python) (the AI-first origin, previously named `omyfish` — the old link redirects there), [omyfish-ai](https://github.com/fenghebonjour/omyfish-ai) (standalone AI microservice shared by all), **omyfish-java** (this one), and [omyfish-dotnet](https://github.com/fenghebonjour/omyfish-dotnet).
+> **Repo reorganization (July 2026):** the OMyFish platform is split into six repos: [omyfish-python](https://github.com/fenghebonjour/omyfish-python) (the AI-first origin, previously named `omyfish` — the old link redirects there — now kept in place for training the fish-ID model), [omyfish-ai](https://github.com/fenghebonjour/omyfish-ai) (standalone AI microservice shared by all), **omyfish-java** (this one), [omyfish-dotnet](https://github.com/fenghebonjour/omyfish-dotnet), and the two newest siblings, [omyfish-python-web](https://github.com/fenghebonjour/omyfish-python-web) (Django, public) and omyfish-ios (SwiftUI, private).
 
 ## Stack
 
@@ -57,11 +57,11 @@ omyfish-java/
     species-service/          ← AI orchestration, species KB
     observation-service/      ← Logging, GIS, GeoJSON
     notification-service/     ← RabbitMQ event consumer
-    ai-service/               ← builds from ../omyfish-ai (shared: fish ID + Bite Score)
+    ai-service/               ← builds from ../omyfish-ai (shared: Bite Score + fish ID + Regs & Tips chatbot)
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
     omyfish-shared-events/    ← FishIdentifiedEvent, ObservationCreatedEvent
-  frontend/omyfish-web/       ← Next.js 15 frontend (/, /timing, /observations, /notifications, /login)
+  frontend/omyfish-web/       ← Next.js 15 frontend (/, /timing, /regs, /observations, /notifications, /login, /register)
   infrastructure/
     kubernetes/               ← Deployments, HPA, Ingress
     helm/omyfish/             ← Helm chart
