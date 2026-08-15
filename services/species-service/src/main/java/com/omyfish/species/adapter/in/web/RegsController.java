@@ -1,11 +1,14 @@
 package com.omyfish.species.adapter.in.web;
 
+import com.omyfish.species.domain.exception.AiServiceException;
 import com.omyfish.species.domain.port.in.GetRegsAdvisorUseCase;
 import com.omyfish.species.domain.port.out.AIServicePort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientException;
 
 import java.util.List;
 import java.util.Map;
@@ -18,6 +21,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/species/regs")
 public class RegsController {
+
+    private static final Logger log = LoggerFactory.getLogger(RegsController.class);
 
     private final GetRegsAdvisorUseCase getRegsAdvisorUseCase;
 
@@ -63,8 +68,9 @@ public class RegsController {
         return ResponseEntity.ok(getRegsAdvisorUseCase.ask(request.question()));
     }
 
-    @ExceptionHandler({WebClientRequestException.class, IllegalStateException.class})
-    ResponseEntity<Map<String, String>> handleAiServiceDown() {
+    @ExceptionHandler({WebClientException.class, AiServiceException.class})
+    ResponseEntity<Map<String, String>> handleAiServiceDown(Exception e) {
+        log.error("Regs advisor request failed", e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
             "error", "AI service unavailable",
             "detail", "The regs advisor is unreachable or its data provider is down. Try again shortly."));
