@@ -103,3 +103,27 @@ things already changed together, no real drift risk yet.
 - [ ] Revisit if a second REST API consumer ever appears (public API, a
   third service) — that's the trigger to add OpenAPI contract tests for the
   REST surface too.
+
+---
+
+## [x] E — Migrate species catalog persistence to MongoDB
+
+**Status:** DONE (2026-08-19, commit 36c0200). Species catalog is read-mostly,
+flexible-schema reference data with no relational integrity needs, so it moved
+off PostgreSQL/JPA/Flyway onto its own MongoDB instance behind the existing
+`SpeciesRepository` domain port. `SpeciesJpaEntity`/`SpeciesJpaRepository`/
+`V1__create_species_table.sql` replaced with `SpeciesDocument`/
+`SpeciesMongoRepository`; `docker-compose.yml` gained a `mongodb` service;
+`Makefile`'s `migrate` target no longer touches species-service. Also fixed a
+pre-existing bug while touching this code: `toDomain()` was generating a fresh
+random id instead of restoring the persisted one — added a
+`Species.reconstitute()` factory mirroring the pattern already used in
+`observation-service`'s `Observation`. Full `mvn test` suite green, verified
+end to end via `docker compose up -d --build`.
+
+**Not yet done:** the same move for `omyfish-dotnet` (`SpeciesDbContext` /
+EF Core+Npgsql) and `omyfish-python-web` (`apps/species` Django ORM+Postgres
+model) — tracked as their own backlog item E in each of those repos'
+`BACKLOG.md`. User deferred to a later session (2026-08-19); do each as its
+own dedicated pass, not folded into unrelated work, since the ORM/migration
+mechanics differ per stack.
