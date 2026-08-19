@@ -8,6 +8,7 @@ networks:
 
 volumes:
   postgres_data:
+  mongo_data:
   rabbitmq_data:
   minio_data:
   prometheus_data:
@@ -30,6 +31,21 @@ services:
     networks: [omyfish-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U omyfish"]
+      interval: 10s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: omyfish
+      MONGO_INITDB_ROOT_PASSWORD: omyfish_dev
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       retries: 5
 
@@ -142,9 +158,7 @@ services:
     ports:
       - "8082:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/omyfish
-      SPRING_DATASOURCE_USERNAME: omyfish
-      SPRING_DATASOURCE_PASSWORD: omyfish_dev
+      SPRING_DATA_MONGODB_URI: mongodb://omyfish:omyfish_dev@mongodb:27017/omyfish?authSource=admin
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: omyfish
       SPRING_RABBITMQ_PASSWORD: omyfish_dev
@@ -153,13 +167,11 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: omyfish
       MINIO_SECRET_KEY: omyfish_dev
-      SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
-      SPRING_FLYWAY_BASELINE_VERSION: "0"
       SPECIES_METADATA_PATH: /metadata/fish_info.json
     volumes:
       - ../omyfish-python/data/metadata:/metadata:ro
     depends_on:
-      postgres: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_started }
     networks: [omyfish-net, omyfish-shared]

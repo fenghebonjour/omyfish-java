@@ -23,6 +23,39 @@ public class Species extends AggregateRoot<UUID> {
         super(UUID.randomUUID());
     }
 
+    private Species(UUID id) {
+        super(id);
+    }
+
+    public static Species reconstitute(
+        UUID id,
+        String scientificName,
+        String commonName,
+        String family,
+        String conservationStatus,
+        String habitat,
+        String geographicRange,
+        String description,
+        String diet,
+        Integer maxSizeCm,
+        String funFact,
+        boolean isNorthAmericanFreshwater
+    ) {
+        Species species = new Species(id);
+        species.scientificName = scientificName;
+        species.commonName = commonName;
+        species.family = family;
+        species.conservationStatus = conservationStatus;
+        species.habitat = habitat;
+        species.geographicRange = geographicRange;
+        species.description = description;
+        species.diet = diet;
+        species.maxSizeCm = maxSizeCm;
+        species.funFact = funFact;
+        species.isNorthAmericanFreshwater = isNorthAmericanFreshwater;
+        return species;
+    }
+
     public static Species create(
         String scientificName,
         String commonName,

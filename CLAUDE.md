@@ -69,6 +69,7 @@ config/           Spring beans wiring ports to adapters
 - Flyway migrations: `src/main/resources/db/migration/V{n}__description.sql`
 - PostGIS queries: use `ST_AsGeoJSON`, `ST_Within`, `ST_DWithin` directly in JPQL/native queries
 - Each service owns its own schema (logical separation in same PostgreSQL instance for dev)
+- Exception: `species-service` uses MongoDB (Spring Data MongoDB), not PostgreSQL — its species catalog is read-mostly, flexible-schema reference data with no relational integrity needs. Adapter lives in `adapter/out/persistence/` (`SpeciesDocument`, `SpeciesMongoRepository`) behind the same `SpeciesRepository` domain port.
 
 ## RabbitMQ
 

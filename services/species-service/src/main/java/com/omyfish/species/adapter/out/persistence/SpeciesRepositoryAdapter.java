@@ -11,29 +11,29 @@ import java.util.UUID;
 @Component
 public class SpeciesRepositoryAdapter implements SpeciesRepository {
 
-    private final SpeciesJpaRepository jpaRepository;
+    private final SpeciesMongoRepository mongoRepository;
 
-    public SpeciesRepositoryAdapter(SpeciesJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
+    public SpeciesRepositoryAdapter(SpeciesMongoRepository mongoRepository) {
+        this.mongoRepository = mongoRepository;
     }
 
     @Override
     public Optional<Species> findByScientificName(String scientificName) {
-        return jpaRepository.findByScientificName(scientificName).map(SpeciesJpaEntity::toDomain);
+        return mongoRepository.findByScientificName(scientificName).map(SpeciesDocument::toDomain);
     }
 
     @Override
     public Species save(Species species) {
-        return jpaRepository.save(SpeciesJpaEntity.from(species)).toDomain();
+        return mongoRepository.save(SpeciesDocument.from(species)).toDomain();
     }
 
     @Override
     public Optional<Species> findById(UUID id) {
-        return jpaRepository.findById(id).map(SpeciesJpaEntity::toDomain);
+        return mongoRepository.findById(id).map(SpeciesDocument::toDomain);
     }
 
     @Override
     public List<Species> findAll() {
-        return jpaRepository.findAll().stream().map(SpeciesJpaEntity::toDomain).toList();
+        return mongoRepository.findAll().stream().map(SpeciesDocument::toDomain).toList();
     }
 }

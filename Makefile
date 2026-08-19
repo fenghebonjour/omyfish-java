@@ -57,7 +57,6 @@ test-integration:
 # ─── Database ─────────────────────────────────────────────────────────────────
 
 migrate:
-	mvn flyway:migrate -pl services/species-service
 	mvn flyway:migrate -pl services/observation-service
 	mvn flyway:migrate -pl services/identity-service
 
