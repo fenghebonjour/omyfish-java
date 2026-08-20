@@ -33,7 +33,11 @@
        ▼                              ▼    - observation-service (ObsCreated)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                         PostgreSQL + PostGIS                                │
-│     identity_db          species_db           observation_db                │
+│              identity_db              observation_db                        │
+└────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         MongoDB                                             │
+│                    species catalog (species-service)                       │
 └────────────────────────────────────────────────────────────────────────────┘
 ┌────────────────────────────────────────────────────────────────────────────┐
 │              MinIO (dev) / AWS S3 (prod) — Object Storage                  │
@@ -53,7 +57,7 @@
 |----------------------|-------------------------------------------------------------|------|-------------------------------|
 | **api-gateway**      | Routing, JWT validation, rate limiting, CORS                | 8080 | Spring Cloud Gateway          |
 | **identity-service** | User registration, JWT issuance, OAuth2/OIDC, API keys     | 8081 | Spring Security, JJWT         |
-| **species-service**  | AI orchestration, species knowledge base, top-K predictions | 8082 | Spring Web, Spring AMQP       |
+| **species-service**  | AI orchestration, species knowledge base, top-K predictions | 8082 | Spring Web, Spring AMQP, Spring Data MongoDB |
 | **observation-service** | Observation CRUD, EXIF extraction, PostGIS, GeoJSON export | 8083 | Hibernate Spatial, MinIO   |
 | **notification-service** | Async notifications, email/webhook dispatch            | 8084 | Spring AMQP consumer          |
 | **ai-service**       | EfficientNet-B3 inference, CLIP fallback, Bite Score forecast — shared `omyfish-ai` | 8000 | Python, FastAPI, PyTorch      |
@@ -91,7 +95,7 @@
                     ┌───────────────────────────────────────┐
                     │         species-service               │
                     │                                       │
-  REST Request ──► IN PORT ──► Application Service ──► OUT PORT ──► PostgreSQL
+  REST Request ──► IN PORT ──► Application Service ──► OUT PORT ──► MongoDB
   RabbitMQ msg ──► IN PORT     (IdentificationService)  OUT PORT ──► AI Service
                     │          (SpeciesService)          OUT PORT ──► RabbitMQ
                     │                                       │
@@ -135,19 +139,25 @@ observation-service ─── logs result for audit
 notification-service ─── sends email / push / webhook
 ```
 
-## PostgreSQL + PostGIS Schema
+## MongoDB Schema
 
-### species_db
+### species collection
 
-```sql
--- species table (see V1__create_species_table.sql)
-species (id UUID PK, scientific_name, common_name, family,
-         conservation_status, habitat, geographic_range,
-         description, is_north_american_freshwater, created_at)
+Read-mostly, flexible-schema reference data — no relational integrity needs, so
+species-service uses MongoDB instead of PostgreSQL/JPA/Flyway (see
+`SpeciesDocument`, `SpeciesMongoRepository`).
 
-predictions (id UUID PK, species_id FK, image_storage_key,
-             confidence DOUBLE, rank INT, predicted_at)
 ```
+species (_id UUID, scientificName, commonName, family,
+         conservationStatus, habitat, geographicRange,
+         description, northAmericanFreshwater)
+```
+
+`Prediction` (top-K identification results) is an in-memory domain object only —
+not persisted; it's published on `FishIdentifiedEvent` and returned directly in
+the `/identify` response.
+
+## PostgreSQL + PostGIS Schema
 
 ### observation_db
 
@@ -307,6 +317,8 @@ JVM Tuning (production):
 **Spring AMQP + RabbitMQ Quorum Queues** — Quorum queues provide HA and durability guarantees (Raft consensus) unlike classic mirrored queues. Spring AMQP's `@RabbitListener` + DLQ/retry policy gives resilient async processing with minimal boilerplate.
 
 **Hibernate Spatial + PostGIS** — Hibernate Spatial adds JPA support for `Geometry` types, enabling type-safe GIS queries in Java code. PostGIS's ST_AsGeoJSON, ST_Within, ST_DWithin make radius searches and GeoJSON export trivially efficient.
+
+**MongoDB (species-service only)** — The species catalog is read-mostly, flexible-schema reference data with no relational integrity needs, so it lives in its own MongoDB instance behind the same `SpeciesRepository` domain port rather than PostgreSQL/JPA/Flyway.
 
 **omyfish-ai (shared AI microservice)** — PyTorch's ecosystem for computer vision has no Java equivalent. The AI service lives in its own repo (`../omyfish-ai`) and is shared across omyfish-python, omyfish-java, and omyfish-dotnet. The docker-compose build context points to `../omyfish-ai` so the data science team can iterate on the model independently of the Java release cycle. ONNX export enables future edge deployment.
 

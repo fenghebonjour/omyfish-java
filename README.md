@@ -14,7 +14,7 @@
 | Services     | Java 21 · Spring Boot 3.x · Spring Data JPA · Hibernate |
 | AI Layer     | Python 3.11 · PyTorch · ONNX Runtime · FastAPI          |
 | Messaging    | RabbitMQ 3.13 (Quorum Queues)                           |
-| Database     | PostgreSQL 16 + PostGIS 3.4                             |
+| Database     | PostgreSQL 16 + PostGIS 3.4 · MongoDB 7 (species-service) |
 | Object Store | MinIO (dev) · AWS S3 (prod)                             |
 | Infra        | Docker Compose · Kubernetes · Helm 3                    |
 | Observability| OpenTelemetry · Micrometer · Prometheus · Grafana · Jaeger |
@@ -86,6 +86,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full diagrams, DDD bounded contexts, 
 | Notification Service | 8084 |
 | AI Service (Python)  | 8000 |
 | PostgreSQL           | 5432 |
+| MongoDB              | 27017|
 | RabbitMQ AMQP        | 5672 |
 | RabbitMQ Management  | 15672|
 | MinIO API            | 9000 |
