@@ -1,0 +1,74 @@
+@if (points().length === 0) {
+  <p class="text-sm text-gray-400 py-10 text-center">No forecast data for this day.</p>
+} @else {
+  <div class="h-56 w-full">
+    <svg
+      #svg
+      [attr.viewBox]="'0 0 ' + width + ' ' + height"
+      preserveAspectRatio="none"
+      class="w-full h-full"
+      (mousemove)="onMouseMove($event)"
+      (mouseleave)="onMouseLeave()"
+    >
+      <!-- Low / Medium / High horizontal bands -->
+      <rect [attr.x]="margin.left" [attr.y]="yScale(bandMedium)" [attr.width]="width - margin.left - margin.right"
+            [attr.height]="yScale(0) - yScale(bandMedium)" fill="#f8fafc" />
+      <rect [attr.x]="margin.left" [attr.y]="yScale(bandHigh)" [attr.width]="width - margin.left - margin.right"
+            [attr.height]="yScale(bandMedium) - yScale(bandHigh)" fill="#eff6ff" />
+      <rect [attr.x]="margin.left" [attr.y]="yScale(100)" [attr.width]="width - margin.left - margin.right"
+            [attr.height]="yScale(bandHigh) - yScale(100)" fill="#dbeafe" fill-opacity="0.7" />
+
+      <!-- Score-peak windows — matches the Major/Minor times lists below the chart -->
+      @for (r of minorRanges(); track r.x1) {
+        <rect [attr.x]="xScale(r.x1)" [attr.y]="margin.top" [attr.width]="xScale(r.x2) - xScale(r.x1)"
+              [attr.height]="height - margin.top - margin.bottom" fill="#60a5fa" fill-opacity="0.12" />
+      }
+      @for (r of majorRanges(); track r.x1) {
+        <rect [attr.x]="xScale(r.x1)" [attr.y]="margin.top" [attr.width]="xScale(r.x2) - xScale(r.x1)"
+              [attr.height]="height - margin.top - margin.bottom" fill="#2563eb" fill-opacity="0.18" />
+      }
+
+      <!-- Sunrise/sunset — the dawn/dusk peaks come from these, not the moon -->
+      @for (m of sunMarks(); track m.x) {
+        <line [attr.x1]="xScale(m.x)" [attr.x2]="xScale(m.x)" [attr.y1]="margin.top"
+              [attr.y2]="height - margin.bottom" stroke="#f59e0b" stroke-dasharray="3 3" />
+        <text [attr.x]="xScale(m.x)" [attr.y]="margin.top - 6" text-anchor="middle" font-size="10" fill="#d97706">
+          {{ m.label }}
+        </text>
+      }
+
+      <!-- Axes -->
+      <line [attr.x1]="margin.left" [attr.x2]="width - margin.right" [attr.y1]="height - margin.bottom"
+            [attr.y2]="height - margin.bottom" stroke="#e5e7eb" />
+      @for (t of xTicks; track t) {
+        <text [attr.x]="xScale(t)" [attr.y]="height - margin.bottom + 14" text-anchor="middle" font-size="11" fill="#9ca3af">
+          {{ formatHour(t) }}
+        </text>
+      }
+      @for (t of yTicks; track t) {
+        <text [attr.x]="margin.left - 8" [attr.y]="yScale(t) + 4" text-anchor="end" font-size="11" fill="#9ca3af">
+          {{ yTickLabel(t) }}
+        </text>
+      }
+
+      <!-- The activity line itself -->
+      <path [attr.d]="linePath()" fill="none" stroke="#2563eb" stroke-width="2.5" />
+
+      <!-- Hover cursor + active dot — Recharts' <Tooltip cursor> + activeDot -->
+      @if (hoveredPoint(); as p) {
+        <line [attr.x1]="xScale(p.hour)" [attr.x2]="xScale(p.hour)" [attr.y1]="margin.top"
+              [attr.y2]="height - margin.bottom" stroke="#2563eb" stroke-width="1" stroke-dasharray="4 2" />
+        <circle [attr.cx]="xScale(p.hour)" [attr.cy]="yScale(p.value)" r="5" fill="#2563eb" stroke="#fff" stroke-width="2" />
+
+        <!-- Tooltip box drawn in the same SVG coordinate space as the
+             point, so no screen<->SVG conversion is needed like a
+             DOM-overlay tooltip (React's version) would require. -->
+        <g [attr.transform]="'translate(' + (xScale(p.hour) - 45) + ',' + (yScale(p.value) - 34) + ')'">
+          <rect width="90" height="24" rx="6" fill="white" stroke="#bfdbfe" />
+          <text x="8" y="16" font-size="11" fill="#374151">{{ p.time }}</text>
+          <text x="60" y="16" font-size="11" font-weight="600" fill="#2563eb">{{ round(p.value) }}</text>
+        </g>
+      }
+    </svg>
+  </div>
+}

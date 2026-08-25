@@ -1,0 +1,94 @@
+<div class="flex flex-col gap-6 max-w-2xl mx-auto p-6">
+  <div
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
+    (click)="fileInput.click()"
+    class="border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors"
+    [class]="isDragActive() ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'"
+  >
+    <input #fileInput type="file" accept="image/jpeg,image/png,image/webp" class="hidden" (change)="onFileInputChange($event)" (click)="$event.stopPropagation()" />
+    @if (preview(); as src) {
+      <img [src]="src" alt="Upload preview" class="max-h-64 mx-auto rounded-lg object-contain" />
+    } @else {
+      <p class="text-gray-500 text-lg">
+        {{ isDragActive() ? 'Drop your fish photo here' : 'Drag & drop a fish photo, or click to select' }}
+      </p>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="text-center text-blue-600 font-medium animate-pulse">Identifying species…</div>
+  }
+
+  @if (error(); as err) {
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">{{ err }}</div>
+  }
+
+  @if (result(); as res) {
+    @if (res.isFish === false) {
+      <div class="bg-orange-50 border border-orange-300 rounded-lg p-4 text-orange-800 text-center">
+        🐟 That doesn't look like a fish. Try uploading a clear photo of a fish.
+      </div>
+    } @else {
+      <div class="flex flex-col gap-3">
+        @if (res.uncertain) {
+          <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 text-yellow-800 text-sm">
+            Low confidence — try a clearer photo in better lighting
+          </div>
+        }
+        @for (p of res.predictions; track p.rank) {
+          <app-prediction-card [prediction]="p" />
+        }
+
+        @if (lat() && lng() && (regsLoading() || regsLimits() || regsConsumption())) {
+          <div class="grid grid-cols-2 gap-3">
+            <app-regs-limit-card [limits]="regsLimits()" [loading]="regsLoading()" />
+            <app-regs-consumption-card [consumption]="regsConsumption()" [loading]="regsLoading()" />
+          </div>
+        }
+
+        @if (auth.isAuthenticated() && !saved()) {
+          <div class="flex flex-col gap-2">
+            <div class="flex gap-2 items-center">
+              <label class="text-xs text-gray-500 w-20 shrink-0">Location</label>
+              <input
+                type="number"
+                placeholder="Latitude"
+                [value]="lat()"
+                (input)="lat.set($any($event.target).value)"
+                class="flex-1 text-xs border rounded px-2 py-1 text-gray-700"
+                step="any"
+              />
+              <input
+                type="number"
+                placeholder="Longitude"
+                [value]="lng()"
+                (input)="lng.set($any($event.target).value)"
+                class="flex-1 text-xs border rounded px-2 py-1 text-gray-700"
+                step="any"
+              />
+            </div>
+            <button
+              (click)="handleSave()"
+              [disabled]="saving()"
+              class="w-full py-2 rounded-lg border border-blue-600 text-blue-600 hover:bg-blue-50 text-sm font-medium disabled:opacity-50 transition-colors"
+            >
+              {{ saving() ? 'Saving…' : 'Save to My Observations' }}
+            </button>
+          </div>
+        }
+        @if (saved()) {
+          <div class="text-center text-sm text-green-600 font-medium">
+            Saved to your observations — <a routerLink="/observations" class="underline">View My Observations</a>
+          </div>
+        }
+        @if (!auth.isAuthenticated()) {
+          <p class="text-center text-sm text-gray-400">
+            <a routerLink="/login" class="text-blue-600 hover:underline">Log in</a> to save this observation
+          </p>
+        }
+      </div>
+    }
+  }
+</div>

@@ -1,0 +1,12 @@
+<div class="bg-white rounded-2xl border border-gray-100 p-4">
+  <p class="text-sm font-semibold text-gray-700 mb-2">{{ title() }}</p>
+  @if (windows().length === 0) {
+    <p class="text-xs text-gray-400">None this day</p>
+  } @else {
+    <ul class="flex flex-col gap-1.5">
+      @for (w of windows(); track w.start) {
+        <li class="text-sm text-blue-700 bg-blue-50 rounded-lg px-3 py-1.5">{{ formatWindow(w) }}</li>
+      }
+    </ul>
+  }
+</div>

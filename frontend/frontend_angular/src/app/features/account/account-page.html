@@ -1,0 +1,62 @@
+@if (!sub() && !error()) {
+  <main class="min-h-screen bg-gray-50 flex items-center justify-center">
+    <p class="text-gray-400 animate-pulse">Loading account...</p>
+  </main>
+} @else {
+  <main class="min-h-screen bg-gray-50 py-10">
+    <div class="max-w-2xl mx-auto px-4 flex flex-col gap-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Account</h1>
+        <p class="text-sm text-gray-500 mt-1">{{ auth.email() }}</p>
+      </div>
+
+      @if (error(); as err) {
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{{ err }}</div>
+      }
+
+      @if (sub(); as s) {
+        <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm flex flex-col gap-4">
+          <h2 class="font-semibold text-gray-900">Subscription</h2>
+
+          @if (s.status === 'trialing') {
+            <p class="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              Free trial — {{ trialDaysLeft() }} day{{ trialDaysLeft() === 1 ? '' : 's' }} left
+            </p>
+          }
+          @if (s.status === 'active') {
+            <p class="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+              Subscribed{{ s.plan ? ' — ' + (planLabels[s.plan] ?? s.plan) : '' }}
+              @if (s.currentPeriodEnd) {
+                · renews {{ s.currentPeriodEnd | date }}
+              }
+            </p>
+          }
+          @if (s.status === 'expired' || s.status === 'canceled') {
+            <p class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              {{ s.status === 'expired'
+                ? 'Your trial has ended — subscribe to keep full access.'
+                : 'Your subscription is canceled.' }}
+            </p>
+          }
+
+          @if (s.status !== 'active') {
+            <div class="grid grid-cols-2 gap-3">
+              @for (plan of plans; track plan) {
+                <button
+                  (click)="subscribe(plan)"
+                  [disabled]="busy()"
+                  class="border border-blue-600 text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-lg py-3 text-sm font-medium"
+                >
+                  {{ planLabels[plan] }}
+                  @if (plan === 'yearly') {
+                    <span class="block text-xs text-gray-400">2 months free</span>
+                  }
+                </button>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </main>
+}

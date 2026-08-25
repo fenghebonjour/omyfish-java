@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Same base look as the React twin (frontend/omyfish-web/src/app/layout.tsx body classes) */
+body {
+  min-height: 100vh;
+  background-color: #f9fafb; /* gray-50 */
+  color: #111827; /* gray-900 */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Minimal styling for marked's HTML output — no typography plugin installed */
+.prose-chat p {
+  margin-bottom: 0.5rem;
+}
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+.prose-chat ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.prose-chat ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.prose-chat li {
+  margin-bottom: 0.125rem;
+}
+.prose-chat strong {
+  font-weight: 600;
+}
+.prose-chat a {
+  text-decoration: underline;
+}

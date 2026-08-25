@@ -1,0 +1,58 @@
+<div class="flex flex-col gap-4 max-w-2xl mx-auto p-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">Regs &amp; Tips</h1>
+    <p class="text-xs text-gray-500 mt-1">
+      Informational only — verify current regulations at quebec.ca before fishing.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-3 min-h-[300px]">
+    @if (messages().length === 0) {
+      <p class="text-sm text-gray-400 text-center py-8">
+        Ask about Quebec fishing regulations, tackle, or techniques.
+      </p>
+    }
+    @for (m of messages(); track $index) {
+      <div class="flex" [class]="m.role === 'user' ? 'justify-end' : 'justify-start'">
+        <div
+          class="max-w-[80%] rounded-xl px-3 py-2 text-sm"
+          [class]="m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-900'"
+        >
+          @if (m.role === 'assistant') {
+            <div class="prose-chat" [innerHTML]="renderMarkdown(m.text)"></div>
+          } @else {
+            <p>{{ m.text }}</p>
+          }
+          @if (m.sources && m.sources.length > 0) {
+            <p class="mt-1 text-xs opacity-70">Sources: {{ m.sources.join(', ') }}</p>
+          }
+        </div>
+      </div>
+    }
+    @if (sending()) {
+      <p class="text-sm text-gray-400">Thinking…</p>
+    }
+  </div>
+
+  @if (error(); as err) {
+    <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">{{ err }}</div>
+  }
+
+  <div class="flex gap-2">
+    <input
+      type="text"
+      name="chatInput"
+      [(ngModel)]="input"
+      (keydown.enter)="send()"
+      placeholder="Ask a question…"
+      class="flex-1 border rounded-lg px-3 py-2 text-sm text-gray-900"
+    />
+    <button
+      (click)="send()"
+      [disabled]="sending() || !input.trim()"
+      class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700 transition-colors"
+    >
+      Send
+    </button>
+  </div>
+</div>

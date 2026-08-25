@@ -1,0 +1,57 @@
+<div class="max-w-sm mx-auto mt-12">
+  <h1 class="text-2xl font-bold text-gray-900 mb-6">Create account</h1>
+
+  <form (submit)="handleSubmit($event)" class="flex flex-col gap-4">
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Display name</label>
+      <input
+        type="text"
+        name="displayName"
+        [(ngModel)]="displayName"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Your name (optional)"
+      />
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+      <input
+        type="email"
+        required
+        name="email"
+        [(ngModel)]="email"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="you@example.com"
+      />
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+      <input
+        type="password"
+        required
+        minlength="8"
+        name="password"
+        [(ngModel)]="password"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="At least 8 characters"
+      />
+    </div>
+
+    @if (error(); as err) {
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{{ err }}</div>
+    }
+
+    <button
+      type="submit"
+      [disabled]="loading()"
+      class="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+    >
+      {{ loading() ? 'Creating account…' : 'Create account' }}
+    </button>
+  </form>
+
+  <p class="mt-4 text-sm text-gray-500 text-center">
+    Already have an account? <a routerLink="/login" class="text-blue-600 hover:underline">Log in</a>
+  </p>
+</div>

@@ -1,0 +1,41 @@
+@if (loading()) {
+  <div class="text-center py-16 text-gray-400">Loading observations…</div>
+} @else {
+  <div class="flex flex-col gap-6">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold text-gray-900">My Observations</h1>
+      <a routerLink="/identify" class="text-sm text-blue-600 hover:underline">+ New identification</a>
+    </div>
+
+    @if (error(); as err) {
+      <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{{ err }}</div>
+    }
+
+    <label class="flex items-center gap-2 text-sm text-gray-600">
+      <input type="checkbox" [checked]="showRegsLayer()" (change)="toggleRegsLayer()" />
+      Show Quebec fishing zones &amp; consumption-advisory stations
+    </label>
+
+    <app-observation-map
+      [markers]="mapMarkers()"
+      height="300px"
+      [zonesGeoJson]="showRegsLayer() ? zonesGeoJson() : undefined"
+      [stations]="showRegsLayer() ? stations() : undefined"
+    />
+
+    @if (observations().length === 0) {
+      <div class="text-center py-16 text-gray-400">
+        <p class="text-lg">No observations yet.</p>
+        <a routerLink="/identify" class="mt-2 inline-block text-blue-600 hover:underline text-sm">
+          Identify a fish to get started
+        </a>
+      </div>
+    } @else {
+      <div class="flex flex-col gap-3">
+        @for (obs of observations(); track obs.id) {
+          <app-observation-card [obs]="obs" (delete)="handleDelete($event)" />
+        }
+      </div>
+    }
+  </div>
+}

@@ -1,0 +1,46 @@
+<header class="bg-white border-b shadow-sm">
+  <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
+    <a routerLink="/" class="flex items-center gap-2 text-xl font-bold text-blue-700">
+      <span>🐟</span>
+      <span>OMyFish</span>
+    </a>
+
+    <nav class="flex items-center gap-4 ml-4 flex-1">
+      <a routerLink="/" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">Timing</a>
+      <a routerLink="/identify" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">Identify</a>
+      <a routerLink="/regs" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">Regs &amp; Tips</a>
+
+      <!-- Signals are read by calling them — auth.isAuthenticated() not
+           auth.isAuthenticated — the () is what subscribes this template
+           binding to future changes, same spot React reads a boolean prop. -->
+      @if (auth.isAuthenticated()) {
+        <a routerLink="/observations" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">
+          My Observations
+        </a>
+        <a routerLink="/notifications" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">
+          Notifications
+        </a>
+      }
+    </nav>
+
+    <div class="flex items-center gap-3">
+      @if (auth.isAuthenticated()) {
+        <span class="text-sm text-gray-500 hidden sm:block">{{ auth.email() }}</span>
+        <button
+          (click)="handleLogout()"
+          class="text-sm px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+        >
+          Log out
+        </button>
+      } @else {
+        <a routerLink="/login" class="text-sm text-gray-600 hover:text-blue-700 transition-colors">Log in</a>
+        <a
+          routerLink="/register"
+          class="text-sm px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Sign up
+        </a>
+      }
+    </div>
+  </div>
+</header>

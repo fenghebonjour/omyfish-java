@@ -1,0 +1,37 @@
+<div class="border rounded-xl p-4 flex flex-col gap-2 shadow-sm">
+  <div class="flex justify-between items-start">
+    <div>
+      <p class="font-semibold text-gray-900">
+        @if (medal()) {
+          <span class="mr-1">{{ medal() }}</span>
+        }
+        {{ prediction().speciesName }}
+      </p>
+      <p class="text-sm text-gray-500 italic">{{ prediction().scientificName }}</p>
+    </div>
+    <span class="text-sm font-medium text-gray-700">{{ prediction().confidencePercent }}</span>
+  </div>
+  <div class="w-full bg-gray-100 rounded-full h-2">
+    <div class="h-2 rounded-full" [class]="barColor()" [style.width.%]="pct()"></div>
+  </div>
+  <div class="flex flex-col gap-1 text-sm text-gray-700">
+    @if (prediction().habitat) {
+      <p><span class="font-medium">Habitat:</span> {{ prediction().habitat }}</p>
+    }
+    @if (prediction().diet) {
+      <p><span class="font-medium">Diet:</span> {{ prediction().diet }}</p>
+    }
+    @if (prediction().maxSizeCm != null) {
+      <p><span class="font-medium">Max size:</span> {{ prediction().maxSizeCm }} cm</p>
+    }
+    @if (prediction().conservationStatus; as status) {
+      <p><span class="font-medium">Conservation:</span> {{ conservationIcon(status) }} {{ status }}</p>
+    }
+  </div>
+  @if (prediction().description) {
+    <p class="text-sm text-gray-600">{{ prediction().description }}</p>
+  }
+  @if (prediction().funFact) {
+    <p class="text-sm bg-blue-50 border border-blue-100 rounded-lg p-2 text-blue-800">💡 {{ prediction().funFact }}</p>
+  }
+</div>

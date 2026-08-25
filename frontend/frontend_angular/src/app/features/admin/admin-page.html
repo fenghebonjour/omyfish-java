@@ -1,0 +1,76 @@
+@if (!stats() && !forbidden() && !error()) {
+  <main class="min-h-screen bg-gray-50 flex items-center justify-center">
+    <p class="text-gray-400 animate-pulse">Loading admin...</p>
+  </main>
+} @else if (forbidden()) {
+  <main class="min-h-screen bg-gray-50 flex items-center justify-center">
+    <p class="text-gray-500">This page is for administrators only.</p>
+  </main>
+} @else {
+  <main class="min-h-screen bg-gray-50 py-10">
+    <div class="max-w-5xl mx-auto px-4 flex flex-col gap-6">
+      <h1 class="text-2xl font-bold text-gray-900">Admin</h1>
+
+      @if (error(); as err) {
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{{ err }}</div>
+      }
+
+      @if (stats(); as s) {
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          @for (row of [
+            ['Users', s.users],
+            ['Active subs', s.subscriptions['active'] ?? 0],
+            ['On trial', s.subscriptions['trialing'] ?? 0],
+            ['Expired', s.subscriptions['expired'] ?? 0],
+            ['MRR (CAD)', '$' + s.mrrCad.toFixed(2)],
+          ]; track row[0]) {
+            <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <p class="text-xs text-gray-400">{{ row[0] }}</p>
+              <p class="text-xl font-semibold text-gray-900 mt-1">{{ row[1] }}</p>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-gray-400 border-b border-gray-100">
+              <th class="p-3">Email</th>
+              <th class="p-3">Status</th>
+              <th class="p-3">Plan</th>
+              <th class="p-3">Trial ends</th>
+              <th class="p-3">Period ends</th>
+              <th class="p-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of subs(); track s.userId) {
+              <tr class="border-b border-gray-50 last:border-0">
+                <td class="p-3 text-gray-900">{{ s.email }}</td>
+                <td class="p-3">
+                  <span class="text-xs border rounded-full px-2 py-0.5" [class]="statusStyles[s.status] ?? ''">
+                    {{ s.status }}
+                  </span>
+                </td>
+                <td class="p-3 text-gray-500">{{ s.plan ?? '—' }}</td>
+                <td class="p-3 text-gray-500">{{ s.trialEnd ? (s.trialEnd | date) : '—' }}</td>
+                <td class="p-3 text-gray-500">{{ s.currentPeriodEnd ? (s.currentPeriodEnd | date) : '—' }}</td>
+                <td class="p-3 text-right whitespace-nowrap">
+                  <button (click)="grant(s.userId)" class="text-xs text-blue-600 hover:underline mr-3">Grant 1y</button>
+                  <button (click)="extendTrial(s.userId)" class="text-xs text-blue-600 hover:underline mr-3">+7d trial</button>
+                  <button (click)="revoke(s.userId)" class="text-xs text-red-500 hover:underline">Revoke</button>
+                </td>
+              </tr>
+            }
+            @if (subs().length === 0) {
+              <tr>
+                <td colspan="6" class="p-6 text-center text-gray-400">No subscriptions yet</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+}

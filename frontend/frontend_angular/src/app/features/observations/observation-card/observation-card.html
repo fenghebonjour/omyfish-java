@@ -1,0 +1,53 @@
+<div class="border rounded-xl p-4 bg-white shadow-sm flex gap-4">
+  @if (obs().imageUrl && !imageFailed()) {
+    <img
+      [src]="obs().imageUrl"
+      [alt]="obs().speciesName"
+      class="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+      (error)="imageFailed.set(true)"
+    />
+  }
+  <div class="flex-1 min-w-0">
+    <div class="flex items-start justify-between gap-2">
+      <div>
+        <p class="font-semibold text-gray-900">{{ obs().speciesName }}</p>
+        @if (obs().scientificName) {
+          <p class="text-sm text-gray-500 italic">{{ obs().scientificName }}</p>
+        }
+      </div>
+      <button
+        (click)="delete.emit(obs().id)"
+        class="text-gray-400 hover:text-red-500 transition-colors text-sm flex-shrink-0"
+        title="Delete observation"
+      >
+        ✕
+      </button>
+    </div>
+
+    <div class="mt-2 flex items-center gap-2">
+      <div class="flex-1 bg-gray-100 rounded-full h-1.5 max-w-[120px]">
+        <div class="h-1.5 rounded-full" [class]="barColor()" [style.width.%]="confidencePercent()"></div>
+      </div>
+      <span class="text-xs text-gray-500">{{ confidencePercent() }}% confidence</span>
+    </div>
+
+    <div class="mt-1 flex items-center gap-3 text-xs text-gray-400 flex-wrap">
+      <span>{{ obs().observedAt | date }}</span>
+      @if (hasLocation()) {
+        <span>📍 {{ obs().latitude!.toFixed(4) }}, {{ obs().longitude!.toFixed(4) }}</span>
+      }
+      @if (obs().notes) {
+        <span>📝 {{ obs().notes }}</span>
+      }
+      @if (hasLocation()) {
+        <button (click)="showBiteScore.set(!showBiteScore())" class="text-blue-600 hover:underline">
+          🎣 {{ showBiteScore() ? 'Hide bite score' : 'Bite score' }}
+        </button>
+      }
+    </div>
+
+    @if (showBiteScore() && hasLocation()) {
+      <app-bite-score-panel [lat]="obs().latitude!" [lon]="obs().longitude!" [species]="obs().speciesName" />
+    }
+  </div>
+</div>
