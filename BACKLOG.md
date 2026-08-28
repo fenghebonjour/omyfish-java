@@ -127,3 +127,18 @@ model) — tracked as their own backlog item E in each of those repos'
 `BACKLOG.md`. User deferred to a later session (2026-08-19); do each as its
 own dedicated pass, not folded into unrelated work, since the ORM/migration
 mechanics differ per stack.
+
+---
+
+## [x] F — Regs & Tips: render chat answers as Markdown, not raw text
+
+**Status:** DONE (2026-08-25, commit e510503, bundled with the Angular
+frontend twin). `/regs/ask` returns Groq-generated Markdown (bold, bullet
+lists, etc.), but the shared frontend's chat UI dumped it into plain text,
+so users saw literal `**`/`-` characters. Same bug independently found and
+fixed the same day in `omyfish-python-web` (commit 88503de) and
+`omyfish-dotnet` (commit 4e7e38b) via `react-markdown` — expected, since all
+three share `frontend/omyfish-web` byte-for-byte (item C above).
+`omyfish-ios` has its own separate SwiftUI chat view and carried the same
+bug until 2026-08-28 (commit e53b418), fixed there via
+`AttributedString(markdown:)`.
