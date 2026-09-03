@@ -4,6 +4,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -20,6 +22,8 @@ import java.util.List;
 
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthFilter.class);
 
     // All species endpoints (identify, bite-score, catalog browsing) are public,
     // matching the dotnet stack; observation GeoJSON is the public map feed.
@@ -54,7 +58,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return reject(exchange, HttpStatus.UNAUTHORIZED);
+            return reject(exchange, path, "missing or malformed Authorization header");
         }
 
         try {
@@ -67,7 +71,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             // Refresh tokens are signed with the same key but must never
             // authenticate API calls — they are only valid at /api/v1/auth/refresh.
             if ("refresh".equals(claims.get("token_type", String.class))) {
-                return reject(exchange, HttpStatus.UNAUTHORIZED);
+                return reject(exchange, path, "refresh token presented as an access token");
             }
 
             ServerWebExchange mutated = exchange.mutate()
@@ -81,7 +85,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
             return chain.filter(mutated);
 
         } catch (JwtException e) {
-            return reject(exchange, HttpStatus.UNAUTHORIZED);
+            return reject(exchange, path, e.getMessage());
         }
     }
 
@@ -89,8 +93,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
         return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
-    private Mono<Void> reject(ServerWebExchange exchange, HttpStatus status) {
-        exchange.getResponse().setStatusCode(status);
+    private Mono<Void> reject(ServerWebExchange exchange, String path, String reason) {
+        log.debug("Rejected request to {}: {}", path, reason);
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
         return exchange.getResponse().setComplete();
     }
 

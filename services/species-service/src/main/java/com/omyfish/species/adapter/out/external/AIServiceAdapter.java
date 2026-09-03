@@ -1,10 +1,14 @@
 package com.omyfish.species.adapter.out.external;
 
+import com.omyfish.species.domain.exception.AiServiceException;
 import com.omyfish.species.domain.port.out.AIServicePort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.util.UriBuilder;
 
 import java.time.LocalDate;
@@ -14,6 +18,8 @@ import java.util.Map;
 
 @Component
 public class AIServiceAdapter implements AIServicePort {
+
+    private static final Logger log = LoggerFactory.getLogger(AIServiceAdapter.class);
 
     private final WebClient webClient;
 
@@ -31,7 +37,9 @@ public class AIServiceAdapter implements AIServicePort {
             .bodyToMono(AIResponse.class)
             .block();
 
-        if (response == null) return new AIResult(List.of(), true);
+        if (response == null || response.predictions() == null) {
+            throw new AiServiceException("Empty prediction response from ai-service");
+        }
 
         List<AIPrediction> predictions = response.predictions().stream()
             .map(p -> new AIPrediction(
@@ -43,14 +51,7 @@ public class AIServiceAdapter implements AIServicePort {
 
     @Override
     public BiteForecast getBiteForecast(double lat, double lon, String species, int hours) {
-        // Resolve first so callers can pass a confirmed fish-ID name directly;
-        // unknown species fall back to the "general" profile instead of a 400.
-        SpeciesKeyResponse keyResponse = webClient.get()
-            .uri(b -> b.path("/bite-score/species-key").queryParam("name", species).build())
-            .retrieve()
-            .bodyToMono(SpeciesKeyResponse.class)
-            .block();
-        String speciesKey = keyResponse != null ? keyResponse.species_key() : "general";
+        String speciesKey = resolveSpeciesKey(species);
 
         BiteForecastDto dto = webClient.get()
             .uri((UriBuilder b) -> b.path("/bite-score/forecast")
@@ -64,7 +65,7 @@ public class AIServiceAdapter implements AIServicePort {
             .block();
 
         if (dto == null) {
-            throw new IllegalStateException("Empty bite-score response from ai-service");
+            throw new AiServiceException("Empty bite-score response from ai-service");
         }
         return new BiteForecast(
             dto.species(), dto.lat(), dto.lon(),
@@ -88,7 +89,7 @@ public class AIServiceAdapter implements AIServicePort {
             .bodyToMono(RegsLimitsDto.class)
             .block();
         if (dto == null) {
-            throw new IllegalStateException("Empty regs limits response from ai-service");
+            throw new AiServiceException("Empty regs limits response from ai-service");
         }
         List<RegsSpeciesLimit> rules = dto.rules().stream()
             .map(r -> new RegsSpeciesLimit(
@@ -105,7 +106,10 @@ public class AIServiceAdapter implements AIServicePort {
             .retrieve()
             .bodyToMono(Map.class)
             .block();
-        return geoJson != null ? geoJson : Map.of();
+        if (geoJson == null) {
+            throw new AiServiceException("Empty regs zones response from ai-service");
+        }
+        return geoJson;
     }
 
     @Override
@@ -119,7 +123,9 @@ public class AIServiceAdapter implements AIServicePort {
             .retrieve()
             .bodyToMono(RegsStationDto[].class)
             .block();
-        if (stations == null) return List.of();
+        if (stations == null) {
+            throw new AiServiceException("Empty regs stations response from ai-service");
+        }
         return List.of(stations).stream()
             .map(s -> new RegsStation(s.no_bqma(), s.hydronyme(), s.latitude(), s.longitude(), s.distance_km()))
             .toList();
@@ -140,7 +146,7 @@ public class AIServiceAdapter implements AIServicePort {
             .bodyToMono(RegsConsumptionDto.class)
             .block();
         if (dto == null) {
-            throw new IllegalStateException("Empty regs consumption response from ai-service");
+            throw new AiServiceException("Empty regs consumption response from ai-service");
         }
         return new RegsConsumption(
             dto.lat(), dto.lon(), dto.species(), dto.station_name(), dto.distance_km(),
@@ -157,9 +163,37 @@ public class AIServiceAdapter implements AIServicePort {
             .bodyToMono(RegsAskResponseDto.class)
             .block();
         if (dto == null) {
-            throw new IllegalStateException("Empty regs ask response from ai-service");
+            throw new AiServiceException("Empty regs ask response from ai-service");
         }
         return new RegsAnswer(dto.question(), dto.answer(), dto.sources(), dto.disclaimer());
+    }
+
+    /**
+     * Unknown species fall back to the "general" profile instead of failing the
+     * forecast, so callers can pass a confirmed fish-ID name directly. The
+     * fallback is logged — it silently changes which profile scores the forecast.
+     */
+    private String resolveSpeciesKey(String species) {
+        SpeciesKeyResponse keyResponse;
+        try {
+            keyResponse = webClient.get()
+                .uri(b -> b.path("/bite-score/species-key").queryParam("name", species).build())
+                .retrieve()
+                .bodyToMono(SpeciesKeyResponse.class)
+                .block();
+        } catch (WebClientException e) {
+            log.warn("species-key lookup failed for '{}' — using the general profile: {}",
+                species, e.toString());
+            return "general";
+        }
+        if (keyResponse == null) {
+            log.warn("Empty species-key response for '{}' — using the general profile", species);
+            return "general";
+        }
+        if (!keyResponse.matched()) {
+            log.info("No species-key match for '{}' — using the general profile", species);
+        }
+        return keyResponse.species_key();
     }
 
     private static BiteHourlyScore toScore(BiteHourlyScoreDto h) {
