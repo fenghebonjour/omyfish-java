@@ -53,7 +53,12 @@ class IdentificationServiceTest {
         IdentificationResult result = service.identify(COMMAND);
 
         assertThat(result.predictions()).hasSize(1);
-        assertThat(result.predictions().get(0).getSpecies()).isSameAs(walleye);
+        Species resultSpecies = result.predictions().get(0).getSpecies();
+        assertThat(resultSpecies.getScientificName()).isEqualTo(walleye.getScientificName());
+        assertThat(resultSpecies.getCommonName()).isEqualTo(walleye.getCommonName());
+        assertThat(resultSpecies.getDiet()).isEqualTo("Fish");
+        assertThat(resultSpecies.getMaxSizeCm()).isEqualTo(80);
+        assertThat(resultSpecies.getFunFact()).isEqualTo("Fun fact");
         assertThat(result.predictions().get(0).getConfidence().getValue()).isEqualTo(0.91);
         assertThat(result.predictions().get(0).getRank()).isEqualTo(1);
         assertThat(result.uncertain()).isFalse();

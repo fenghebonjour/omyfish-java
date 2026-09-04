@@ -36,6 +36,7 @@ public class IdentificationService implements IdentifyFishUseCase {
             .map(ai -> {
                 Species species = speciesRepository
                     .findByScientificName(ai.scientificName())
+                    .map(found -> enrichWithAiData(found, ai))
                     .orElseGet(() -> Species.create(
                         ai.scientificName(), ai.commonName(),
                         "Unknown", ai.conservationStatus() != null ? ai.conservationStatus() : "Unknown",
@@ -68,6 +69,23 @@ public class IdentificationService implements IdentifyFishUseCase {
             .findFirst()
             .map(p -> p.getConfidence().isUncertain())
             .orElse(true), aiResult.isFish());
+    }
+
+    private static Species enrichWithAiData(Species found, AIServicePort.AIPrediction ai) {
+        return Species.reconstitute(
+            found.getId(),
+            found.getScientificName(),
+            found.getCommonName(),
+            found.getFamily(),
+            found.getConservationStatus(),
+            found.getHabitat(),
+            found.getGeographicRange(),
+            found.getDescription(),
+            found.getDiet() != null ? found.getDiet() : ai.diet(),
+            found.getMaxSizeCm() != null ? found.getMaxSizeCm() : ai.maxSizeCm(),
+            found.getFunFact() != null ? found.getFunFact() : ai.funFact(),
+            found.isNorthAmericanFreshwater()
+        );
     }
 
     public record IdentifyFishCommand(
