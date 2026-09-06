@@ -5,6 +5,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -17,6 +19,8 @@ import java.util.UUID;
 
 @Component
 public class JwtTokenAdapter implements TokenPort {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtTokenAdapter.class);
 
     private static final String TOKEN_TYPE_CLAIM = "token_type";
     private static final String TOKEN_TYPE_REFRESH = "refresh";
@@ -86,6 +90,8 @@ public class JwtTokenAdapter implements TokenPort {
             return Optional.of(
                 Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload());
         } catch (JwtException | IllegalArgumentException e) {
+            // Rejected tokens are routine (expired/tampered) — logged without the token itself.
+            log.debug("Rejected JWT: {}", e.getMessage());
             return Optional.empty();
         }
     }

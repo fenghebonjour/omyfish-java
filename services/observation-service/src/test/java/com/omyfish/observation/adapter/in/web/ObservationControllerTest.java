@@ -104,4 +104,12 @@ class ObservationControllerTest {
             .andExpect(jsonPath("$[0].speciesName").value("Atlantic Salmon"))
             .andExpect(jsonPath("$.length()").value(1));
     }
+
+    @Test
+    void listObservations_malformedUserId_returns400() throws Exception {
+        mvc.perform(get("/api/v1/observations")
+                .header("X-User-Id", "not-a-uuid"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").exists());
+    }
 }

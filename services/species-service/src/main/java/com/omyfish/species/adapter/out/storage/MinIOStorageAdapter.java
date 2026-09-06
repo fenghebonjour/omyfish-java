@@ -1,8 +1,11 @@
 package com.omyfish.species.adapter.out.storage;
 
+import com.omyfish.species.domain.exception.ImageStorageException;
 import com.omyfish.species.domain.port.out.StoragePort;
 import io.minio.*;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +14,8 @@ import java.util.UUID;
 
 @Component
 public class MinIOStorageAdapter implements StoragePort {
+
+    private static final Logger log = LoggerFactory.getLogger(MinIOStorageAdapter.class);
 
     private final MinioClient minioClient;
     private final String bucket;
@@ -35,7 +40,7 @@ public class MinIOStorageAdapter implements StoragePort {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize MinIO bucket: " + bucket, e);
+            throw new IllegalStateException("Failed to initialize MinIO bucket: " + bucket, e);
         }
     }
 
@@ -55,7 +60,8 @@ public class MinIOStorageAdapter implements StoragePort {
                     .build()
             );
         } catch (Exception e) {
-            throw new RuntimeException("Failed to store image in MinIO", e);
+            log.error("Failed to store image in MinIO: bucket={} key={}", bucket, key, e);
+            throw new ImageStorageException("Failed to store image in MinIO: " + key, e);
         }
         return key;
     }

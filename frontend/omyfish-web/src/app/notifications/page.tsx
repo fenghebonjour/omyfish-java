@@ -31,8 +31,10 @@ export default function NotificationsPage() {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       );
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(
+        `Could not mark the notification as read: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   }
 

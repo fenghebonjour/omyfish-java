@@ -1,17 +1,22 @@
 package com.omyfish.species.adapter.in.web;
 
+import com.omyfish.species.domain.exception.AiServiceException;
 import com.omyfish.species.domain.port.in.GetBiteForecastUseCase;
 import com.omyfish.species.domain.port.out.AIServicePort;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientException;
 
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/species/bite-score")
 public class BiteScoreController {
+
+    private static final Logger log = LoggerFactory.getLogger(BiteScoreController.class);
 
     private final GetBiteForecastUseCase getBiteForecastUseCase;
 
@@ -38,8 +43,9 @@ public class BiteScoreController {
         return ResponseEntity.ok(getBiteForecastUseCase.getForecast(lat, lon, species, 24));
     }
 
-    @ExceptionHandler({WebClientRequestException.class, IllegalStateException.class})
-    ResponseEntity<Map<String, String>> handleAiServiceDown() {
+    @ExceptionHandler({WebClientException.class, AiServiceException.class})
+    ResponseEntity<Map<String, String>> handleAiServiceDown(Exception e) {
+        log.error("Bite-score request failed", e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
             "error", "AI service unavailable",
             "detail", "The bite-score service is unreachable or its weather provider is down. Try again shortly."));

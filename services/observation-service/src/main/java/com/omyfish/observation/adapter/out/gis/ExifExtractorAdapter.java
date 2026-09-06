@@ -1,6 +1,7 @@
 package com.omyfish.observation.adapter.out.gis;
 
 import com.drew.imaging.ImageMetadataReader;
+import com.drew.imaging.ImageProcessingException;
 import com.drew.lang.GeoLocation;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.exif.ExifIFD0Directory;
@@ -8,13 +9,18 @@ import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
 import com.omyfish.observation.domain.model.valueobject.ExifMetadata;
 import com.omyfish.observation.domain.model.valueobject.GpsCoordinates;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 
 @Component
 public class ExifExtractorAdapter {
+
+    private static final Logger log = LoggerFactory.getLogger(ExifExtractorAdapter.class);
 
     public record Extraction(ExifMetadata metadata, GpsCoordinates gps) {}
 
@@ -56,7 +62,8 @@ public class ExifExtractorAdapter {
                     try {
                         gps = GpsCoordinates.of(location.getLatitude(), location.getLongitude());
                     } catch (IllegalArgumentException e) {
-                        // Invalid coordinates — leave as unknown()
+                        log.warn("Discarding out-of-range EXIF GPS coordinates ({}, {}): {}",
+                            location.getLatitude(), location.getLongitude(), e.getMessage());
                     }
                 }
             }
@@ -65,7 +72,10 @@ public class ExifExtractorAdapter {
                 new ExifMetadata(capturedAt, cameraModel, width, height, focalLength, aperture, iso),
                 gps
             );
-        } catch (Exception e) {
+        } catch (ImageProcessingException | IOException e) {
+            // Missing or corrupt metadata is expected for some uploads — the
+            // observation is still usable without EXIF, so degrade instead of failing.
+            log.warn("Could not read image metadata — continuing without EXIF/GPS: {}", e.toString());
             return new Extraction(ExifMetadata.empty(), GpsCoordinates.unknown());
         }
     }

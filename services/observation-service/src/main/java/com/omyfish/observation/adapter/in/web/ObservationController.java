@@ -3,20 +3,27 @@ package com.omyfish.observation.adapter.in.web;
 import com.omyfish.observation.adapter.in.web.dto.CreateObservationRequest;
 import com.omyfish.observation.adapter.in.web.dto.GeoJsonResponse;
 import com.omyfish.observation.adapter.in.web.dto.ObservationResponse;
+import com.omyfish.observation.domain.exception.ImageStorageException;
 import com.omyfish.observation.domain.exception.ObservationNotFoundException;
 import com.omyfish.observation.domain.port.in.CreateObservationUseCase;
 import com.omyfish.observation.domain.port.in.DeleteObservationUseCase;
 import com.omyfish.observation.domain.port.in.GetObservationUseCase;
 import com.omyfish.observation.domain.port.in.ListObservationsUseCase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/observations")
 public class ObservationController {
+
+    private static final Logger log = LoggerFactory.getLogger(ObservationController.class);
 
     private final CreateObservationUseCase createObservationUseCase;
     private final GetObservationUseCase getObservationUseCase;
@@ -86,5 +93,19 @@ public class ObservationController {
     @ExceptionHandler(ObservationNotFoundException.class)
     ResponseEntity<Void> handleNotFound() {
         return ResponseEntity.notFound().build();
+    }
+
+    // Malformed X-User-Id / coordinates are client errors, not 500s.
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
+        log.debug("Rejected observation request: {}", e.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+    }
+
+    @ExceptionHandler(ImageStorageException.class)
+    ResponseEntity<Map<String, String>> handleStorageFailure(ImageStorageException e) {
+        log.error("Observation image storage failed", e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(Map.of("error", "Image storage unavailable"));
     }
 }
