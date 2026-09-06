@@ -125,6 +125,58 @@ class AuthControllerTest {
     }
 
     @Test
+    void register_weakPassword_returnsBadRequest() throws Exception {
+        mvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"alice@example.com\",\"password\":\"short\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_malformedEmail_returnsBadRequest() throws Exception {
+        mvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"not-an-email\",\"password\":\"password123\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createApiKey_forAnotherUser_returnsForbidden() throws Exception {
+        when(getCurrentUserUseCase.me("jwt.token.here"))
+            .thenReturn(new CurrentUser(UUID.randomUUID(), "alice@example.com", "USER"));
+
+        mvc.perform(post("/api/v1/users/{userId}/api-keys", UUID.randomUUID())
+                .header("Authorization", "Bearer jwt.token.here")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"mine\"}"))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createApiKey_withoutToken_returnsUnauthorized() throws Exception {
+        mvc.perform(post("/api/v1/users/{userId}/api-keys", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"mine\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void createApiKey_forSelf_returnsCreated() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(getCurrentUserUseCase.me("jwt.token.here"))
+            .thenReturn(new CurrentUser(userId, "alice@example.com", "USER"));
+        when(createApiKeyUseCase.createApiKey(any()))
+            .thenReturn(new CreateApiKeyUseCase.CreateApiKeyResult(UUID.randomUUID(), "omf_key", "mine"));
+
+        mvc.perform(post("/api/v1/users/{userId}/api-keys", userId)
+                .header("Authorization", "Bearer jwt.token.here")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"mine\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.key").value("omf_key"));
+    }
+
+    @Test
     void login_invalidCredentials_returnsUnauthorized() throws Exception {
         when(loginUseCase.login(any()))
             .thenThrow(new IllegalArgumentException("Invalid credentials"));

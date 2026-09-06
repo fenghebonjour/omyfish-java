@@ -54,8 +54,15 @@ public class ObservationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ObservationResponse> get(@PathVariable("id") UUID id) {
-        return ResponseEntity.ok(ObservationResponse.from(getObservationUseCase.get(id)));
+    public ResponseEntity<ObservationResponse> get(
+        @PathVariable("id") UUID id,
+        @RequestHeader("X-User-Id") String userIdHeader
+    ) {
+        var observation = getObservationUseCase.get(id);
+        if (!observation.getUserId().equals(UUID.fromString(userIdHeader))) {
+            throw new ObservationNotFoundException(id);
+        }
+        return ResponseEntity.ok(ObservationResponse.from(observation));
     }
 
     @GetMapping

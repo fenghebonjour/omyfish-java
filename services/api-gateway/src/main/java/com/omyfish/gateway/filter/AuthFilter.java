@@ -49,7 +49,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         String path = exchange.getRequest().getURI().getPath();
 
         if (isPublic(path)) {
-            return chain.filter(exchange);
+            return chain.filter(stripIdentityHeaders(exchange));
         }
 
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -83,6 +83,20 @@ public class AuthFilter implements GlobalFilter, Ordered {
         } catch (JwtException e) {
             return reject(exchange, HttpStatus.UNAUTHORIZED);
         }
+    }
+
+    /**
+     * Client-supplied identity headers are never trusted: downstream services treat
+     * X-User-* as gateway-asserted, so they are dropped on unauthenticated routes.
+     */
+    private ServerWebExchange stripIdentityHeaders(ServerWebExchange exchange) {
+        return exchange.mutate()
+            .request(r -> r.headers(h -> {
+                h.remove("X-User-Id");
+                h.remove("X-User-Email");
+                h.remove("X-User-Role");
+            }))
+            .build();
     }
 
     private boolean isPublic(String path) {
