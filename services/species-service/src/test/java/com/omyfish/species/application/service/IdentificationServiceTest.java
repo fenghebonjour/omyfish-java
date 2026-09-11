@@ -15,7 +15,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,8 +46,8 @@ class IdentificationServiceTest {
             "LC", "Lake", "NA", "Desc", true);
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.91, 1)), true));
-        when(speciesRepository.findByScientificName("Sander vitreus"))
-            .thenReturn(Optional.of(walleye));
+        when(speciesRepository.findByScientificNames(anyList()))
+            .thenReturn(List.of(walleye));
 
         IdentificationResult result = service.identify(COMMAND);
 
@@ -69,8 +68,8 @@ class IdentificationServiceTest {
     void identify_createsFallbackSpeciesWhenUnknownToCatalog() {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Esox masquinongy", "Muskellunge", 0.55, 1)), true));
-        when(speciesRepository.findByScientificName("Esox masquinongy"))
-            .thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList()))
+            .thenReturn(List.of());
 
         IdentificationResult result = service.identify(COMMAND);
 
@@ -86,7 +85,7 @@ class IdentificationServiceTest {
             List.of(
                 aiPrediction("Sander vitreus", "Walleye", 0.91, 1),
                 aiPrediction("Perca flavescens", "Yellow Perch", 0.05, 2)), true));
-        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
 
         service.identify(COMMAND);
 
@@ -112,7 +111,7 @@ class IdentificationServiceTest {
     void identify_lowTopConfidence_flagsUncertain() {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.12, 1)), true));
-        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
 
         assertThat(service.identify(COMMAND).uncertain()).isTrue();
     }
@@ -134,7 +133,7 @@ class IdentificationServiceTest {
     void identify_topConfidenceExactlyAtThreshold_notUncertain() {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.30, 1)), true));
-        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
 
         assertThat(service.identify(COMMAND).uncertain()).isFalse();
     }
@@ -144,7 +143,7 @@ class IdentificationServiceTest {
         // Uncertain results are flagged, not suppressed — the event still fires.
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.12, 1)), true));
-        when(speciesRepository.findByScientificName(anyString())).thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
 
         service.identify(COMMAND);
 
@@ -158,8 +157,8 @@ class IdentificationServiceTest {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(new AIPrediction("Esox masquinongy", "Muskellunge", 0.55, 1,
                 null, null, null, null, null, null)), true));
-        when(speciesRepository.findByScientificName("Esox masquinongy"))
-            .thenReturn(Optional.empty());
+        when(speciesRepository.findByScientificNames(anyList()))
+            .thenReturn(List.of());
 
         Species created = service.identify(COMMAND).predictions().get(0).getSpecies();
 

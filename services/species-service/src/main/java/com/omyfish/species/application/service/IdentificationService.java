@@ -9,7 +9,11 @@ import com.omyfish.species.domain.port.out.EventPublisherPort;
 import com.omyfish.species.domain.port.out.SpeciesRepository;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class IdentificationService implements IdentifyFishUseCase {
 
@@ -32,10 +36,19 @@ public class IdentificationService implements IdentifyFishUseCase {
         AIServicePort.AIResult aiResult =
             aiService.predict(command.imageBase64(), command.topK());
 
+        // Batched lookup instead of one DB round-trip per AI prediction
+        // (BACKLOG.md item G, WEAKNESS_AUDIT.md §3.4).
+        List<String> scientificNames = aiResult.predictions().stream()
+            .map(AIServicePort.AIPrediction::scientificName)
+            .toList();
+        Map<String, Species> knownSpecies = scientificNames.isEmpty()
+            ? Map.of()
+            : speciesRepository.findByScientificNames(scientificNames).stream()
+                .collect(Collectors.toMap(Species::getScientificName, Function.identity()));
+
         List<Prediction> predictions = aiResult.predictions().stream()
             .map(ai -> {
-                Species species = speciesRepository
-                    .findByScientificName(ai.scientificName())
+                Species species = Optional.ofNullable(knownSpecies.get(ai.scientificName()))
                     .map(found -> enrichWithAiData(found, ai))
                     .orElseGet(() -> Species.create(
                         ai.scientificName(), ai.commonName(),

@@ -154,8 +154,9 @@ treatment across the other enterprise siblings. Full explanation in
 `docs/WEAKNESS_AUDIT.md` — this file is the "what shipped". This repo shares
 dotnet's microservices shape, so most findings translate directly. Security
 tier done 2026-09-11; most of the resilience tier done the same day
-(§2.1/§2.2/§2.4) — §2.3 (the outbox pattern), data layer, and testing/CI
-remain, same as dotnet's own pacing across sessions.
+(§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too — §2.3 (the outbox
+pattern), §3.3 (dead PostGIS column), and testing/CI remain, same as
+dotnet's own pacing across sessions.
 
 **Security — DONE 2026-09-11:**
 - ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
@@ -209,12 +210,21 @@ remain, same as dotnet's own pacing across sessions.
   so this needs the same treatment rather than being folded into a broader
   pass.
 
-**Data layer, Testing/CI — not started, left for follow-up rounds** (see
+**Data layer:**
+- ~~N+1 species lookup in `IdentificationService.identify()`~~ — fixed:
+  `SpeciesRepository.findByScientificNames(Collection<String>)` (Spring
+  Data's derived `findByScientificNameIn` on the Mongo side), one batched
+  lookup instead of one per AI prediction. Verified via
+  `IdentificationServiceTest`. (§3.4)
+- §3.3 dead PostGIS geometry column/index in observation-service — **not
+  done** (no radius-search function exists to activate, unlike dotnet's
+  version, so this needs an explicit decision: wire it up like dotnet did,
+  or drop the dead column/index instead — worth a real choice, not a
+  default).
+
+**Testing/CI — not started, left for follow-up rounds** (see
 `WEAKNESS_AUDIT.md` for full detail on each):
-- §3.3 dead PostGIS geometry column/index in observation-service (no
-  radius-search function exists to activate, unlike dotnet's version).
-- §3.4 N+1 species lookup in `IdentificationService.identify()`.
-- Testing/CI: api-gateway has zero tests (now including zero coverage of
+- api-gateway has zero tests (now including zero coverage of
   the new `RateLimitFilter`); no Testcontainers/`@DataJpaTest` anywhere;
   `.gitlab-ci.yml`'s `integration-test` stage runs a Maven profile that
   doesn't exist and tests nothing despite looking covered.

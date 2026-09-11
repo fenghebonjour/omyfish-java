@@ -4,6 +4,7 @@ import com.omyfish.species.domain.model.Species;
 import com.omyfish.species.domain.port.out.SpeciesRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,13 @@ public class SpeciesRepositoryAdapter implements SpeciesRepository {
     @Override
     public Optional<Species> findByScientificName(String scientificName) {
         return mongoRepository.findByScientificName(scientificName).map(SpeciesDocument::toDomain);
+    }
+
+    @Override
+    public List<Species> findByScientificNames(Collection<String> scientificNames) {
+        return mongoRepository.findByScientificNameIn(scientificNames).stream()
+            .map(SpeciesDocument::toDomain)
+            .toList();
     }
 
     @Override

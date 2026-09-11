@@ -168,7 +168,8 @@ Verified via a new `ObservationCreatedConsumerTest` case.
 
 ## 3. Data layer
 
-**Status: 3.1 already fine, 3.2 not applicable, 3.3/3.4 not fixed.**
+**Status: 3.1 already fine, 3.2 not applicable, 3.4 fixed 2026-09-11, 3.3
+not fixed.**
 
 ### 3.1 ORM auto-schema masking missed migrations — already fine
 
@@ -197,10 +198,18 @@ nothing to wire up to. **Not fixed in this pass.**
 
 ### 3.4 N+1 query
 
-**Problem:** `IdentificationService.identify()` does one MongoDB
-round-trip per AI prediction (`findByScientificName`) instead of a single
-batched lookup; `SpeciesRepository`'s port only exposes the singular form.
-**Not fixed in this pass.**
+**Problem:** `IdentificationService.identify()` did one MongoDB round-trip
+per AI prediction (`findByScientificName`) instead of a single batched
+lookup; `SpeciesRepository`'s port only exposed the singular form.
+
+**Fix:** `SpeciesRepository.findByScientificNames(Collection<String>)`
+(backed by Spring Data's derived `findByScientificNameIn` on the Mongo
+repository) — `identify()` now collects every prediction's scientific name
+upfront, does one batched lookup, and builds an in-memory
+`Map<String, Species>` for the per-prediction loop to consult. Verified via
+`IdentificationServiceTest` (updated to stub the batched method — Mockito's
+strict-stubs mode caught every now-unused `findByScientificName` stub as an
+error, which is how the test updates were driven).
 
 ---
 
