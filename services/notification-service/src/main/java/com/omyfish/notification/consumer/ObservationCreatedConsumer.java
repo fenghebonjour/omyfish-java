@@ -24,11 +24,20 @@ public class ObservationCreatedConsumer {
         log.info("Observation created: id={} species={} user={}",
             event.observationId(), event.speciesName(), event.userId());
 
+        // Skips on a redelivered event instead of inserting a duplicate notification — RabbitMQ
+        // redelivery under at-least-once + retry will eventually happen
+        // (BACKLOG.md item G, WEAKNESS_AUDIT.md §2.4).
+        if (repository.existsBySourceEventId(event.eventId())) {
+            log.info("Duplicate delivery for event {} — already processed, skipping", event.eventId());
+            return;
+        }
+
         Notification notification = new Notification(
             event.userId(),
             "OBSERVATION_CREATED",
             "Fish identified: " + event.speciesName(),
-            "Your observation of " + event.speciesName() + " has been recorded."
+            "Your observation of " + event.speciesName() + " has been recorded.",
+            event.eventId()
         );
         repository.save(notification);
         log.info("Notification persisted: id={} userId={}", notification.getId(), notification.getUserId());

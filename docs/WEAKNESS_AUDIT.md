@@ -97,24 +97,47 @@ the included and excluded cases).
 
 ## 2. Resilience
 
-**Status: not started in this pass** — see BACKLOG.md item G for what's
-open and why it was deferred (larger/riskier changes than the security
-tier; §2.3 in particular needs a live Postgres/RabbitMQ to verify against).
+**Status: §2.1, §2.2, §2.4 fixed 2026-09-11.** §2.3 (the outbox pattern)
+deliberately still open — see BACKLOG.md item G (it needs a live
+Postgres/RabbitMQ to verify against, and dotnet's own equivalent fix took a
+dedicated round).
 
 ### 2.1 No timeout/retry/circuit-breaker on the AI `WebClient`
 
-**Problem:** `AIServiceAdapter` builds its `WebClient` with no
+**Problem:** `AIServiceAdapter` built its `WebClient` with no
 `ClientHttpConnector` timeout and no `.timeout(Duration...)` on any of its
-seven `.block()` call sites; no resilience4j dependency exists. Same class
-of bug as dotnet's 2.1. **Not fixed in this pass.**
+seven `.block()` call sites. Same class of bug as dotnet's 2.1.
+
+**Fix:** a `ReactorClientHttpConnector` wrapping a Reactor Netty `HttpClient`
+with a 10s connect timeout and a 15s response timeout, applied once at
+construction — covers all seven `.block()` sites uniformly. No
+resilience4j/circuit-breaker added (matches dotnet's own decision to ship
+the timeout alone first) — a slow `.block()` now throws instead of hanging,
+but still surfaces as a generic 500 until §2.2's handler is in front of it
+(now true, since §2.2 landed in the same pass).
 
 ### 2.2 No global exception handling
 
-**Problem:** zero `@ControllerAdvice`/`@RestControllerAdvice` classes exist
-anywhere; only two controllers have local `@ExceptionHandler` methods.
-Everything else (all of identity-service and notification-service)
-produces Spring Boot's default unstructured error response on any
-unhandled exception. **Not fixed in this pass.**
+**Problem:** zero `@ControllerAdvice`/`@RestControllerAdvice` classes
+existed; only two controllers had local `@ExceptionHandler` methods.
+Everything else produced Spring Boot's default unstructured error response
+on any unhandled exception.
+
+**Fix:** a `GlobalExceptionHandler` (`@RestControllerAdvice`) added to each
+of the four services with REST controllers (identity, species, observation,
+notification) — **extends `ResponseEntityExceptionHandler`**, not a bare
+`@ExceptionHandler(Exception.class)`. That distinction mattered in
+practice: a first attempt with the bare form broke a real test
+(`ObservationControllerTest#createObservation_missingUserIdHeader_returns400`
+started getting 500 instead of 400) because it intercepted Spring's own
+framework-level exceptions (missing required header, unreadable body,
+failed `@Valid` binding) before Spring's built-in resolution could turn
+them into the correct 4xx — extending the base class puts those inherited,
+more-specific handlers back in the resolution set ahead of the generic
+catch-all. `ResponseStatusException` (used throughout identity-service for
+401/404/409) gets its own explicit handler for the same reason. Verified:
+full `mvn test` green across all 4 services after this fix, plus the
+regression it originally caused.
 
 ### 2.3 Dual-write without an outbox
 
@@ -128,12 +151,18 @@ open; needs its own dedicated session per the same reasoning dotnet used.
 
 ### 2.4 No consumer idempotency
 
-**Problem:** `ObservationCreatedConsumer.handle()` inserts a `Notification`
-row on every delivery with no dedup key; the entity has no source-event-id
+**Problem:** `ObservationCreatedConsumer.handle()` inserted a `Notification`
+row on every delivery with no dedup key; the entity had no source-event-id
 column, no unique constraint. A RabbitMQ redelivery creates a duplicate.
-**Not fixed in this pass** — flagged as small-medium, good candidate for
-the next round (needs a new Flyway migration + a dedup check, mirroring
-dotnet's `Notification.SourceEventId` fix).
+
+**Fix:** matches dotnet's `Notification.SourceEventId` approach —
+`V2__add_source_event_id.sql` adds a nullable `source_event_id` column
+with a partial unique index; `Notification` gained a `sourceEventId` field
+(set from the integration event's own `eventId()`, which every publisher
+already generates); the consumer now checks
+`repository.existsBySourceEventId(event.eventId())` before inserting and
+skips (logs + returns) on a redelivery instead of inserting a duplicate.
+Verified via a new `ObservationCreatedConsumerTest` case.
 
 ---
 

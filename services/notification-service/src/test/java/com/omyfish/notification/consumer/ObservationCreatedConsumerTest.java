@@ -41,5 +41,19 @@ class ObservationCreatedConsumerTest {
         assertThat(saved.getTitle()).contains("Atlantic Salmon");
         assertThat(saved.isRead()).isFalse();
         assertThat(saved.getId()).isNotNull();
+        assertThat(saved.getSourceEventId()).isEqualTo(event.eventId());
+    }
+
+    @Test
+    void handle_redeliveredEvent_skipsWithoutInsertingDuplicate() {
+        ObservationCreatedEvent event = new ObservationCreatedEvent(
+            UUID.randomUUID(), UUID.randomUUID(), "Atlantic Salmon", null, null,
+            "fish-images/test.jpg", Instant.now()
+        );
+        when(repository.existsBySourceEventId(event.eventId())).thenReturn(true);
+
+        consumer.handle(event);
+
+        verify(repository, never()).save(any());
     }
 }

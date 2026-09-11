@@ -1,12 +1,16 @@
 package com.omyfish.species.adapter.out.external;
 
 import com.omyfish.species.domain.port.out.AIServicePort;
+import io.netty.channel.ChannelOption;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriBuilder;
+import reactor.netty.http.client.HttpClient;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,7 +22,16 @@ public class AIServiceAdapter implements AIServicePort {
     private final WebClient webClient;
 
     public AIServiceAdapter(@Value("${omyfish.ai-service.url}") String aiServiceUrl) {
-        this.webClient = WebClient.builder().baseUrl(aiServiceUrl).build();
+        // A slow (not down) ai-service used to hang every .block() call here indefinitely —
+        // no connect/response timeout existed anywhere in this client
+        // (BACKLOG.md item G, WEAKNESS_AUDIT.md §2.1).
+        HttpClient httpClient = HttpClient.create()
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10_000)
+            .responseTimeout(Duration.ofSeconds(15));
+        this.webClient = WebClient.builder()
+            .baseUrl(aiServiceUrl)
+            .clientConnector(new ReactorClientHttpConnector(httpClient))
+            .build();
     }
 
     @Override

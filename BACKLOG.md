@@ -152,7 +152,10 @@ senior-dev-style weakness audit (its `BACKLOG.md` item F) covering security,
 resilience, data-layer, and testing/CI findings, then asked for the same
 treatment across the other enterprise siblings. Full explanation in
 `docs/WEAKNESS_AUDIT.md` — this file is the "what shipped". This repo shares
-dotnet's microservices shape, so most findings translate directly.
+dotnet's microservices shape, so most findings translate directly. Security
+tier done 2026-09-11; most of the resilience tier done the same day
+(§2.1/§2.2/§2.4) — §2.3 (the outbox pattern), data layer, and testing/CI
+remain, same as dotnet's own pacing across sessions.
 
 **Security — DONE 2026-09-11:**
 - ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
@@ -178,16 +181,36 @@ dotnet's microservices shape, so most findings translate directly.
 - §1.1 (gateway configures auth but doesn't enforce it) — not applicable,
   already correct (`AuthFilter` is default-deny by construction).
 
-**Resilience, Data layer, Testing/CI — not started, left for follow-up
-rounds** (see `WEAKNESS_AUDIT.md` for full detail on each):
-- §2.1 AI `WebClient` has no timeout/retry/circuit-breaker.
-- §2.2 no global exception handling (`@ControllerAdvice`) anywhere.
+**Resilience — mostly DONE 2026-09-11:**
+- ~~AI `WebClient` has no timeout/retry/circuit-breaker~~ — fixed: a
+  `ReactorClientHttpConnector` with a 10s connect / 15s response timeout,
+  applied once at construction (covers all seven `.block()` call sites).
+  No circuit-breaker added, matching dotnet's own decision to ship the
+  timeout alone first. (§2.1)
+- ~~No global exception handling~~ — fixed: a `GlobalExceptionHandler`
+  (`@RestControllerAdvice` extending `ResponseEntityExceptionHandler`) in
+  each of the four services with REST controllers. Extending the base
+  class (not a bare `@ExceptionHandler(Exception.class)`) mattered in
+  practice — an initial bare version broke a real test by intercepting
+  Spring's own framework-level exceptions (missing header → 400) before
+  they could resolve correctly; caught by running the full suite before
+  committing. `ResponseStatusException` gets its own handler so
+  identity-service's existing 401/404/409s keep their status codes.
+  Verified: full `mvn test` green across all 4 services. (§2.2)
+- ~~No consumer idempotency~~ — fixed: `V2__add_source_event_id.sql` adds
+  a nullable `source_event_id` column + partial unique index;
+  `ObservationCreatedConsumer` now skips a redelivered event
+  (`existsBySourceEventId`) instead of inserting a duplicate notification
+  — same shape as dotnet's `Notification.SourceEventId` fix. Verified via
+  a new `ObservationCreatedConsumerTest` case. (§2.4)
 - §2.3 dual-write without an outbox in `ObservationService.create()` —
-  the largest item; dotnet's own fix for this took a dedicated round to
-  implement and verify against a live Postgres/RabbitMQ, so this needs the
-  same treatment rather than being folded into a broader pass.
-- §2.4 `ObservationCreatedConsumer` has no idempotency check — a RabbitMQ
-  redelivery creates a duplicate notification.
+  **not done**, the largest item; dotnet's own fix for this took a
+  dedicated round to implement and verify against a live Postgres/RabbitMQ,
+  so this needs the same treatment rather than being folded into a broader
+  pass.
+
+**Data layer, Testing/CI — not started, left for follow-up rounds** (see
+`WEAKNESS_AUDIT.md` for full detail on each):
 - §3.3 dead PostGIS geometry column/index in observation-service (no
   radius-search function exists to activate, unlike dotnet's version).
 - §3.4 N+1 species lookup in `IdentificationService.identify()`.
