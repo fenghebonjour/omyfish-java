@@ -232,11 +232,15 @@ DELETE /api/v1/observations/{id}
 ### identity-service
 ```
 POST /api/v1/auth/register  { email, password, displayName }
-POST /api/v1/auth/login     { email, password } → { token, refreshToken, userId, email, role }
-POST /api/v1/auth/refresh   { refreshToken }
+POST /api/v1/auth/login     { email, password } → { token, userId, email, role }
+POST /api/v1/auth/refresh   → { token, userId, email, role }
+POST /api/v1/auth/logout
 POST /api/v1/users/{userId}/api-keys  → { keyId, plainKey, name }
 GET  /api/v1/auth/me
 ```
+The refresh token travels only as an httpOnly, `SameSite=Strict` cookie
+scoped to `/api/v1/auth` (never in the request/response body) — see
+`docs/WEAKNESS_AUDIT.md` §1.3.
 
 ## Security Architecture
 

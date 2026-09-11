@@ -142,3 +142,60 @@ three share `frontend/omyfish-web` byte-for-byte (item C above).
 `omyfish-ios` has its own separate SwiftUI chat view and carried the same
 bug until 2026-08-28 (commit e53b418), fixed there via
 `AttributedString(markdown:)`.
+
+---
+
+## [~] G — Weakness audit follow-up (ported from omyfish-dotnet)
+
+**Status:** IN PROGRESS (added 2026-09-11). `omyfish-dotnet` went through a
+senior-dev-style weakness audit (its `BACKLOG.md` item F) covering security,
+resilience, data-layer, and testing/CI findings, then asked for the same
+treatment across the other enterprise siblings. Full explanation in
+`docs/WEAKNESS_AUDIT.md` — this file is the "what shipped". This repo shares
+dotnet's microservices shape, so most findings translate directly.
+
+**Security — DONE 2026-09-11:**
+- ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
+  per-IP fixed-window `RateLimitFilter` (not Redis-backed — no Redis exists
+  in this stack, and api-gateway is a single instance here), same rates as
+  dotnet (`identify`: 10/min, `bite-score`: 30/min). (`WEAKNESS_AUDIT.md` §1.2)
+- ~~Refresh token in response body + `localStorage`~~ — fixed: `AuthController`
+  now sets an httpOnly, `SameSite=Strict` cookie scoped to `/api/v1/auth`
+  instead of returning it in `AuthResponse`; added `POST /api/v1/auth/logout`.
+  Flipped the gateway's CORS `allowCredentials` to `true` (safe — its
+  `allowedOrigins` is an explicit list, never a wildcard). Frontend
+  (`AuthContext.tsx`/`api.ts`, shared with dotnet/python-web) updated to the
+  same already-shipped dotnet pattern. Verified via `AuthControllerTest`
+  (10 tests, up from 7) plus a full `mvn test`/`next build` pass. (§1.3)
+- ~~Containers run as root~~ — fixed: `USER app` (pinned uid/gid 1001) in
+  all five service Dockerfiles; Helm `deployment.yaml` gained a pod-level
+  `securityContext`/container `allowPrivilegeEscalation: false` — applied
+  to every service **except `ai-service`**, whose Dockerfile (in the
+  separate `../omyfish-ai` repo) has no non-root user today; forcing
+  `runAsUser` there without fixing that image first would have broken its
+  pod (confirmed by actually checking, not assumed). Verified via `helm
+  lint` and `helm template` rendering for both cases. (§1.4)
+- §1.1 (gateway configures auth but doesn't enforce it) — not applicable,
+  already correct (`AuthFilter` is default-deny by construction).
+
+**Resilience, Data layer, Testing/CI — not started, left for follow-up
+rounds** (see `WEAKNESS_AUDIT.md` for full detail on each):
+- §2.1 AI `WebClient` has no timeout/retry/circuit-breaker.
+- §2.2 no global exception handling (`@ControllerAdvice`) anywhere.
+- §2.3 dual-write without an outbox in `ObservationService.create()` —
+  the largest item; dotnet's own fix for this took a dedicated round to
+  implement and verify against a live Postgres/RabbitMQ, so this needs the
+  same treatment rather than being folded into a broader pass.
+- §2.4 `ObservationCreatedConsumer` has no idempotency check — a RabbitMQ
+  redelivery creates a duplicate notification.
+- §3.3 dead PostGIS geometry column/index in observation-service (no
+  radius-search function exists to activate, unlike dotnet's version).
+- §3.4 N+1 species lookup in `IdentificationService.identify()`.
+- Testing/CI: api-gateway has zero tests (now including zero coverage of
+  the new `RateLimitFilter`); no Testcontainers/`@DataJpaTest` anywhere;
+  `.gitlab-ci.yml`'s `integration-test` stage runs a Maven profile that
+  doesn't exist and tests nothing despite looking covered.
+- Bonus: `.gitlab-ci.yml`'s Docker build stage omits identity-service and
+  notification-service images; AI-discovered species are never persisted
+  in species-service (same shape as a bug found+fixed in dotnet's own §2.3
+  pass — worth doing alongside java's §2.3 when that round happens).

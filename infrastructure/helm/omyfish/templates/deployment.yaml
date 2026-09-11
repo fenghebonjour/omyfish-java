@@ -28,10 +28,26 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- /* Matches the non-root USER app (uid/gid 1001) baked into every Java service's and
+      the frontend's Dockerfile — a container breakout or dependency RCE would otherwise have
+      full root inside the pod for no benefit (BACKLOG.md item G, WEAKNESS_AUDIT.md §1.4).
+      Excludes ai-service: it's built from the separate ../omyfish-ai repo, whose Dockerfile
+      has no non-root user today — forcing runAsUser here without verifying/fixing that image
+      first would just break its pod. */ -}}
+      {{- if ne $name "ai-service" }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+      {{- end }}
       containers:
         - name: {{ $name }}
           image: "{{ if $.Values.global.imageRegistry }}{{ $.Values.global.imageRegistry }}/{{ end }}{{ $svc.image.repository }}:{{ $svc.image.tag }}"
           imagePullPolicy: {{ $svc.image.pullPolicy }}
+          {{- if ne $name "ai-service" }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          {{- end }}
           ports:
             - containerPort: {{ $svc.port }}
           {{- if $svc.env }}

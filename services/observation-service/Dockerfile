@@ -15,5 +15,10 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked mvn clean package -DskipT
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=builder /build/services/observation-service/target/*.jar app.jar
+# Runs as root by default otherwise — a container breakout or dependency RCE would have full
+# root inside the container for no benefit, since the JVM doesn't need it to bind :8080
+# (BACKLOG.md item G, WEAKNESS_AUDIT.md §1.4).
+RUN addgroup -S -g 1001 app && adduser -S -u 1001 -G app app
+USER app
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

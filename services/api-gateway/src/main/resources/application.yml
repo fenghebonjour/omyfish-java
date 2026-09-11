@@ -19,7 +19,9 @@ spring:
               - OPTIONS
             allowedHeaders:
               - "*"
-            allowCredentials: false
+            # Required for the refresh-token cookie (WEAKNESS_AUDIT.md §1.3) — safe only
+            # because allowedOrigins above is an explicit list, never a wildcard, per CORS rules.
+            allowCredentials: true
       routes:
         - id: identity-service
           uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}

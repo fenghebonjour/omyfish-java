@@ -69,7 +69,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_validCredentials_returnsTokenPair() throws Exception {
+    void login_validCredentials_returnsTokenAndSetsRefreshCookie() throws Exception {
         when(loginUseCase.login(any()))
             .thenReturn(new LoginResult(
                 "jwt.token.here", "jwt.refresh.here", UUID.randomUUID(), "alice@example.com", "USER"));
@@ -79,33 +79,48 @@ class AuthControllerTest {
                 .content(LOGIN_BODY_VALID))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.token").value("jwt.token.here"))
-            .andExpect(jsonPath("$.refreshToken").value("jwt.refresh.here"))
-            .andExpect(jsonPath("$.role").value("USER"));
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
+            .andExpect(jsonPath("$.role").value("USER"))
+            .andExpect(cookie().value("refresh_token", "jwt.refresh.here"))
+            .andExpect(cookie().httpOnly("refresh_token", true))
+            .andExpect(cookie().path("refresh_token", "/api/v1/auth"));
     }
 
     @Test
-    void refresh_validToken_returnsNewPair() throws Exception {
+    void refresh_validCookie_returnsNewTokenAndRotatesCookie() throws Exception {
         when(refreshTokenUseCase.refresh("jwt.refresh.here"))
             .thenReturn(new RefreshResult(
                 "jwt.token.new", "jwt.refresh.new", UUID.randomUUID(), "alice@example.com", "USER"));
 
         mvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"refreshToken\":\"jwt.refresh.here\"}"))
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", "jwt.refresh.here")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.token").value("jwt.token.new"))
-            .andExpect(jsonPath("$.refreshToken").value("jwt.refresh.new"));
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
+            .andExpect(cookie().value("refresh_token", "jwt.refresh.new"));
     }
 
     @Test
-    void refresh_invalidToken_returnsUnauthorized() throws Exception {
+    void refresh_invalidCookie_returnsUnauthorized() throws Exception {
         when(refreshTokenUseCase.refresh(anyString()))
             .thenThrow(new IllegalArgumentException("Invalid refresh token"));
 
         mvc.perform(post("/api/v1/auth/refresh")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"refreshToken\":\"bogus\"}"))
+                .cookie(new jakarta.servlet.http.Cookie("refresh_token", "bogus")))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void refresh_missingCookie_returnsUnauthorized() throws Exception {
+        mvc.perform(post("/api/v1/auth/refresh"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void logout_clearsTheRefreshCookie() throws Exception {
+        mvc.perform(post("/api/v1/auth/logout"))
+            .andExpect(status().isOk())
+            .andExpect(cookie().maxAge("refresh_token", 0));
     }
 
     @Test
