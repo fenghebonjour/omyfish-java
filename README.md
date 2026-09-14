@@ -61,7 +61,6 @@ omyfish-java/
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
     omyfish-shared-events/    ← FishIdentifiedEvent, ObservationCreatedEvent
-  frontend/omyfish-web/       ← Next.js 15 frontend (/, /timing, /regs, /observations, /notifications, /login, /register)
   infrastructure/
     kubernetes/               ← Deployments, HPA, Ingress
     helm/omyfish/             ← Helm chart
@@ -69,6 +68,14 @@ omyfish-java/
   docker-compose.yml
   Makefile
 ```
+
+**Frontend:** not vendored here — extracted to their own repos/images, shared across every
+omyfish-* backend:
+- React (Next.js) — https://github.com/fenghebonjour/omyfish-frontend
+- Angular — https://github.com/fenghebonjour/omyfish-frontend-angular
+
+`docker-compose.yml`'s `frontend`/`frontend-angular` services pull pinned tags; develop either
+frontend by cloning its repo directly.
 
 ## Architecture
 
