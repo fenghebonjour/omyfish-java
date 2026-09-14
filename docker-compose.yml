@@ -272,3 +272,16 @@ services:
     depends_on:
       api-gateway: { condition: service_healthy }
     networks: [omyfish-net]
+
+  # Angular twin of the frontend above (same API, different framework) — off
+  # by default, opt in with: docker compose --profile angular up -d frontend-angular
+  frontend-angular:
+    profiles: [angular]
+    build:
+      context: ./frontend/frontend_angular
+      dockerfile: Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      api-gateway: { condition: service_healthy }
+    networks: [omyfish-net]
