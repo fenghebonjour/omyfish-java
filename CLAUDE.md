@@ -37,11 +37,19 @@ services/
   species-service/              AI orchestration, species KB
   observation-service/          Observation CRUD, EXIF, PostGIS, GeoJSON
   notification-service/         RabbitMQ consumer, notifications
-frontend/omyfish-web/           Next.js 15 + TypeScript (pages: / [Timing], /identify, /regs, /observations, /notifications, /login)
 infrastructure/
   kubernetes/                   K8s manifests (namespace, deployment, hpa, ingress)
   helm/omyfish/                 Helm chart for all services
 ```
+
+**Frontend:** not vendored in this repo. Both UIs that used to live under `frontend/` were
+extracted to their own repos/images, shared across every omyfish-* backend:
+- React (Next.js) — https://github.com/fenghebonjour/omyfish-frontend
+- Angular — https://github.com/fenghebonjour/omyfish-frontend-angular
+
+`docker-compose.yml`'s `frontend`/`frontend-angular` services pull pinned tags
+(`ghcr.io/fenghebonjour/omyfish-frontend[-angular]:<tag>`); bump the tag to pick up frontend
+changes. To develop either frontend, clone its repo directly.
 
 ## Architecture: Hexagonal (Ports & Adapters)
 
