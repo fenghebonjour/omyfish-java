@@ -154,9 +154,10 @@ treatment across the other enterprise siblings. Full explanation in
 `docs/WEAKNESS_AUDIT.md` — this file is the "what shipped". This repo shares
 dotnet's microservices shape, so most findings translate directly. Security
 tier done 2026-09-11; most of the resilience tier done the same day
-(§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too — §2.3 (the outbox
-pattern), §3.3 (dead PostGIS column), and testing/CI remain, same as
-dotnet's own pacing across sessions.
+(§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too; §3.3 (dead PostGIS
+column), the AI-species-persistence bonus, and the gitlab-ci docker-build
+bonus done 2026-09-17 — §2.3 (the outbox pattern) and testing/CI remain,
+same as dotnet's own pacing across sessions.
 
 **Security — DONE 2026-09-11:**
 - ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
@@ -216,11 +217,18 @@ dotnet's own pacing across sessions.
   Data's derived `findByScientificNameIn` on the Mongo side), one batched
   lookup instead of one per AI prediction. Verified via
   `IdentificationServiceTest`. (§3.4)
-- §3.3 dead PostGIS geometry column/index in observation-service — **not
-  done** (no radius-search function exists to activate, unlike dotnet's
-  version, so this needs an explicit decision: wire it up like dotnet did,
-  or drop the dead column/index instead — worth a real choice, not a
-  default).
+- ~~§3.3 dead PostGIS geometry column/index in observation-service~~ —
+  **fixed 2026-09-17** (user decision: wire it up, not drop).
+  `ObservationJpaEntity` now populates a JTS `Point location` field
+  alongside lat/lng; added `ObservationRepository.findWithinRadius(...)`
+  backed by a native `ST_DWithin` query. No new public endpoint — no caller
+  needs it yet (frontend lives in a separate repo, no such feature
+  requested), so it stops at the repository layer per Simplicity First.
+  Verified via a new Testcontainers (`postgis/postgis`) test that compiles
+  and the rest of the module's suite (14 tests) stays green, but **the new
+  test itself is unexecuted** — no Docker daemon available in this session;
+  run `mvn test -pl services/observation-service
+  -Dtest=ObservationRepositoryAdapterRadiusSearchTest` once Docker is up.
 
 **Testing/CI — not started, left for follow-up rounds** (see
 `WEAKNESS_AUDIT.md` for full detail on each):
@@ -228,7 +236,22 @@ dotnet's own pacing across sessions.
   the new `RateLimitFilter`); no Testcontainers/`@DataJpaTest` anywhere;
   `.gitlab-ci.yml`'s `integration-test` stage runs a Maven profile that
   doesn't exist and tests nothing despite looking covered.
-- Bonus: `.gitlab-ci.yml`'s Docker build stage omits identity-service and
-  notification-service images; AI-discovered species are never persisted
-  in species-service (same shape as a bug found+fixed in dotnet's own §2.3
-  pass — worth doing alongside java's §2.3 when that round happens).
+- ~~Bonus: `.gitlab-ci.yml`'s Docker build stage omits identity-service and
+  notification-service images~~ — **fixed 2026-09-17**: added
+  `docker-identity-service`/`docker-notification-service` jobs mirroring the
+  existing three. Noticed but out of scope: `deploy-staging`/
+  `deploy-production` still don't pass `$IMAGE_TAG` for these two services'
+  Helm values, so their images build/push now but the deploy step doesn't
+  pick up the new tag yet — same gap, one stage over.
+
+**Bonus — AI-discovered species never persisted — fixed 2026-09-17:**
+`IdentificationService.identify()`'s fallback branch now calls
+`speciesRepository.save(...)` on the constructed `Species` instead of
+discarding it, so repeat identifications of the same unrecognized fish hit
+the catalog lookup instead of reconstructing it every time. Verified via
+`IdentificationServiceTest` (10 tests) and a full `mvn test -pl
+services/species-service` (18 tests, green).
+
+**Remaining open items, in planned order:** §2.3 (outbox — largest, needs
+live Postgres/RabbitMQ), then the Testing/CI items. Plan tracked in this
+session; each gets its own dated fix/verify/commit like the items above.

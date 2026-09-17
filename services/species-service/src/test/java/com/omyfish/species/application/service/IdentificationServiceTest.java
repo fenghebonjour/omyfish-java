@@ -70,6 +70,7 @@ class IdentificationServiceTest {
             List.of(aiPrediction("Esox masquinongy", "Muskellunge", 0.55, 1)), true));
         when(speciesRepository.findByScientificNames(anyList()))
             .thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IdentificationResult result = service.identify(COMMAND);
 
@@ -80,12 +81,26 @@ class IdentificationServiceTest {
     }
 
     @Test
+    void identify_persistsFallbackSpeciesSoFutureLookupsHitTheCatalog() {
+        when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
+            List.of(aiPrediction("Esox masquinongy", "Muskellunge", 0.55, 1)), true));
+        when(speciesRepository.findByScientificNames(anyList()))
+            .thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.identify(COMMAND);
+
+        verify(speciesRepository).save(argThat(s -> s.getScientificName().equals("Esox masquinongy")));
+    }
+
+    @Test
     void identify_publishesEventWithTopPrediction() {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(
                 aiPrediction("Sander vitreus", "Walleye", 0.91, 1),
                 aiPrediction("Perca flavescens", "Yellow Perch", 0.05, 2)), true));
         when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.identify(COMMAND);
 
@@ -112,6 +127,7 @@ class IdentificationServiceTest {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.12, 1)), true));
         when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(service.identify(COMMAND).uncertain()).isTrue();
     }
@@ -134,6 +150,7 @@ class IdentificationServiceTest {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.30, 1)), true));
         when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(service.identify(COMMAND).uncertain()).isFalse();
     }
@@ -144,6 +161,7 @@ class IdentificationServiceTest {
         when(aiService.predict("base64img", 3)).thenReturn(new AIResult(
             List.of(aiPrediction("Sander vitreus", "Walleye", 0.12, 1)), true));
         when(speciesRepository.findByScientificNames(anyList())).thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.identify(COMMAND);
 
@@ -159,6 +177,7 @@ class IdentificationServiceTest {
                 null, null, null, null, null, null)), true));
         when(speciesRepository.findByScientificNames(anyList()))
             .thenReturn(List.of());
+        when(speciesRepository.save(any(Species.class))).thenAnswer(inv -> inv.getArgument(0));
 
         Species created = service.identify(COMMAND).predictions().get(0).getSpecies();
 

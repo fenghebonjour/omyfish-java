@@ -3,12 +3,18 @@ package com.omyfish.observation.adapter.out.persistence;
 import com.omyfish.observation.domain.model.Observation;
 import com.omyfish.observation.domain.model.valueobject.GpsCoordinates;
 import jakarta.persistence.*;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.PrecisionModel;
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
 @Table(name = "observations", schema = "observation")
 class ObservationJpaEntity {
+
+    private static final GeometryFactory GEOMETRY_FACTORY = new GeometryFactory(new PrecisionModel(), 4326);
 
     @Id
     private UUID id;
@@ -19,6 +25,7 @@ class ObservationJpaEntity {
     private String imageStorageKey;
     private Double latitude;
     private Double longitude;
+    private Point location;
     private String notes;
     private Instant observedAt;
     private Instant createdAt;
@@ -36,6 +43,7 @@ class ObservationJpaEntity {
         if (o.getLocation() != null && o.getLocation().isPresent()) {
             e.latitude = o.getLocation().latitude();
             e.longitude = o.getLocation().longitude();
+            e.location = GEOMETRY_FACTORY.createPoint(new Coordinate(e.longitude, e.latitude));
         }
         e.notes = o.getNotes();
         e.observedAt = o.getObservedAt();

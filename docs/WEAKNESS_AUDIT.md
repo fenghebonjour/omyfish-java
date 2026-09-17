@@ -169,7 +169,7 @@ Verified via a new `ObservationCreatedConsumerTest` case.
 ## 3. Data layer
 
 **Status: 3.1 already fine, 3.2 not applicable, 3.4 fixed 2026-09-11, 3.3
-not fixed.**
+fixed 2026-09-17.**
 
 ### 3.1 ORM auto-schema masking missed migrations — already fine
 
@@ -189,12 +189,39 @@ with a hand-maintained file list to drift.
 
 ### 3.3 Dead PostGIS geometry column/index
 
+**Status: fixed 2026-09-17.**
+
 **Problem:** `observation-service`'s migration defines a `location
 GEOMETRY(Point, 4326)` column and a GIST index, but `ObservationJpaEntity`
 has no `location`/`Geometry` field — only plain `latitude`/`longitude`.
 Unlike dotnet (which at least had a dead radius-search SQL function to
 activate), no such function exists here either — pure dead weight with
-nothing to wire up to. **Not fixed in this pass.**
+nothing to wire up to.
+
+**Fix (user decision: wire it up, don't drop):** `ObservationJpaEntity`
+gained a `Point location` field (JTS, via the already-managed
+`hibernate-spatial` dependency), populated from `GpsCoordinates` alongside
+the existing `latitude`/`longitude` columns in `from()` — lat/lng stay the
+read-side source of truth (`toDomain()` unchanged), `location` exists purely
+for the GIST index to serve spatial queries. Added
+`ObservationRepository.findWithinRadius(lat, lng, radiusMeters)` (port) →
+`ObservationJpaRepository.findWithinRadius` (native `ST_DWithin` query
+against `location::geography`) → `ObservationRepositoryAdapter`. No new
+public endpoint added: the frontend that would call a "nearby observations"
+feature lives in a separate repo (extracted per the recent frontend-repos
+change) with no such feature request today, so this stays a repository-level
+capability per CLAUDE.md's Simplicity First guideline — a controller/use-case
+can wire it up when an actual caller needs it.
+
+**Verified:** `ObservationRepositoryAdapterRadiusSearchTest`
+(`@DataJpaTest` + Testcontainers, `postgis/postgis:16-3.4-alpine` — the same
+image `docker-compose.yml` uses) asserts `ST_DWithin` returns a point 0km
+away and excludes one ~500km away. Compiles clean and the rest of the
+module's unit tests (14) stay green, but **the new test itself could not be
+executed in this session** — this WSL environment has no working Docker
+daemon (`docker: command not found` / daemon unreachable), which
+Testcontainers requires. Run it yourself once Docker is available:
+`mvn test -pl services/observation-service -Dtest=ObservationRepositoryAdapterRadiusSearchTest`.
 
 ### 3.4 N+1 query
 
@@ -249,19 +276,40 @@ is genuinely wired (AOP starter present, confirmed active).
 ## Bonus findings (not on the dotnet list, found during this pass)
 
 1. **`.gitlab-ci.yml`'s Docker build stage silently omits two of five
-   services** — only species-service, observation-service, and api-gateway
-   have a `docker-*` job; identity-service and notification-service have
-   none, so a change to either ships nowhere unless someone notices. Same
-   "incomplete list nobody audits" shape as dotnet's §3.2, relocated to the
-   Docker stage instead of migrations.
-2. **AI-discovered species are never persisted in species-service** —
-   `speciesRepository.save(...)` is called exactly once in the whole
-   service (the startup seeder). `IdentificationService.identify()` builds
-   a fresh in-memory `Species` for any unrecognized AI prediction, uses it
-   for the response/event, then discards it — every future identical
-   identification repeats the same construct-and-discard path. Same shape
-   as the bug found and fixed in `omyfish-dotnet`'s own
-   `IdentifyFishCommandHandler` while wiring its outbox (§2.3) — worth
-   fixing alongside java's own §2.3 pass, since it's the same method.
+   services — fixed 2026-09-17.** Only species-service,
+   observation-service, and api-gateway had a `docker-*` job; identity-service
+   and notification-service had none, so a change to either shipped nowhere
+   unless someone noticed. Same "incomplete list nobody audits" shape as
+   dotnet's §3.2, relocated to the Docker stage instead of migrations.
 
-Neither bonus finding is fixed in this pass.
+   **Fix:** `docker-identity-service` and `docker-notification-service` jobs
+   added, mirroring the existing three via the same `.docker-build`
+   template. Verified the YAML parses (`python3 -c "import yaml; ..."`) and
+   diffed against the existing jobs for the template/path convention — no
+   live GitLab pipeline available in this environment to run it end-to-end.
+
+   **Noticed but out of scope:** `deploy-staging`/`deploy-production` only
+   pass `--set image.speciesService.tag=$IMAGE_TAG` /
+   `image.observationService.tag` / `image.apiGateway.tag` to Helm —
+   identity-service and notification-service's Helm values keep whatever
+   tag is baked into `values.yaml` instead of the CI-built `$IMAGE_TAG`,
+   even now that their images get built and pushed. Same class of gap, one
+   stage over; not fixed here since it wasn't part of this finding.
+2. **AI-discovered species are never persisted in species-service — fixed
+   2026-09-17.** `IdentificationService.identify()` built a fresh in-memory
+   `Species` for any unrecognized AI prediction, used it for the
+   response/event, then discarded it — every future identical
+   identification repeated the same construct-and-discard path. Same shape
+   as the bug found and fixed in `omyfish-dotnet`'s own
+   `IdentifyFishCommandHandler` while wiring its outbox (§2.3).
+
+   **Fix:** the fallback branch now calls `speciesRepository.save(...)` on
+   the constructed `Species` before using it, so the next identical
+   identification hits the batched MongoDB lookup (§3.4) instead of
+   reconstructing it. Verified via `IdentificationServiceTest` (10 tests, up
+   from 9 — existing fallback-branch tests updated to stub `save()`, plus a
+   new case asserting it's called with the right species) and a full
+   `mvn test -pl services/species-service` (18 tests, green).
+
+Bonus finding 1 (`.gitlab-ci.yml` docker-build stage) is not fixed in this
+pass.

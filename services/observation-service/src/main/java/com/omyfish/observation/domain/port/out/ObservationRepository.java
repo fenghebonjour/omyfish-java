@@ -10,5 +10,6 @@ public interface ObservationRepository {
     Optional<Observation> findById(UUID id);
     List<Observation> findByUserId(UUID userId);
     List<Observation> findAllWithLocation();
+    List<Observation> findWithinRadius(double latitude, double longitude, double radiusMeters);
     void deleteById(UUID id);
 }

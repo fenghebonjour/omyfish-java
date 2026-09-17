@@ -42,6 +42,13 @@ public class ObservationRepositoryAdapter implements ObservationRepository {
     }
 
     @Override
+    public List<Observation> findWithinRadius(double latitude, double longitude, double radiusMeters) {
+        return jpaRepository.findWithinRadius(latitude, longitude, radiusMeters).stream()
+            .map(ObservationJpaEntity::toDomain)
+            .toList();
+    }
+
+    @Override
     public void deleteById(UUID id) {
         jpaRepository.deleteById(id);
     }

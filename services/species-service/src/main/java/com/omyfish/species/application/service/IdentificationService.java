@@ -50,12 +50,12 @@ public class IdentificationService implements IdentifyFishUseCase {
             .map(ai -> {
                 Species species = Optional.ofNullable(knownSpecies.get(ai.scientificName()))
                     .map(found -> enrichWithAiData(found, ai))
-                    .orElseGet(() -> Species.create(
+                    .orElseGet(() -> speciesRepository.save(Species.create(
                         ai.scientificName(), ai.commonName(),
                         "Unknown", ai.conservationStatus() != null ? ai.conservationStatus() : "Unknown",
                         ai.habitat(), "Unknown", ai.description(),
                         ai.diet(), ai.maxSizeCm(), ai.funFact(), false
-                    ));
+                    )));
                 return Prediction.createRanked(
                     species,
                     command.imageStorageKey(),
