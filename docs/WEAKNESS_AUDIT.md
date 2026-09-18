@@ -182,11 +182,11 @@ publisher rather than a framework feature.
 **Verified:**
 - `OutboxEventPublisherTest`, `OutboxPublisherJobTest` — plain Mockito unit
   tests (outbox row shape, Rabbit send + mark-published behavior).
-- `ObservationOutboxIntegrationTest` — `@SpringBootTest` + Testcontainers
+- `ObservationOutboxIT` — `@SpringBootTest` + Testcontainers
   (real Postgres + real RabbitMQ): confirms `create()` leaves an unpublished
   outbox row, and that running the poller actually delivers the message to
   a bound test queue and marks the row published.
-- `ObservationOutboxAtomicityTest` — the actual guarantee the pattern is
+- `ObservationOutboxAtomicityIT` — the actual guarantee the pattern is
   for: a `@Primary` test `EventPublisherPort` forces a failure inside the
   transaction, and asserts the observation row was rolled back too (not
   left orphaned with no event).
@@ -200,7 +200,7 @@ publisher rather than a framework feature.
   and confirmed it's not new to this change (the pre-existing §3.3
   Testcontainers test fails the exact same way here). Environment-level
   Docker Desktop/WSL2 issue, not a code problem. Run
-  `mvn test -pl services/observation-service -Dtest=ObservationOutbox*Test`
+  `mvn verify -Pintegration-tests -pl services/observation-service -am -Dit.test=ObservationOutbox*IT`
   once Testcontainers can actually reach a Docker daemon from this machine.
   All non-Testcontainers tests in the module (20 tests) pass.
 
@@ -268,7 +268,7 @@ change) with no such feature request today, so this stays a repository-level
 capability per CLAUDE.md's Simplicity First guideline — a controller/use-case
 can wire it up when an actual caller needs it.
 
-**Verified:** `ObservationRepositoryAdapterRadiusSearchTest`
+**Verified:** `ObservationRepositoryAdapterRadiusSearchIT`
 (`@DataJpaTest` + Testcontainers, `postgis/postgis:16-3.4-alpine` — the same
 image `docker-compose.yml` uses) asserts `ST_DWithin` returns a point 0km
 away and excludes one ~500km away. Compiles clean and the rest of the
@@ -276,7 +276,7 @@ module's unit tests (14) stay green, but **the new test itself could not be
 executed in this session** — this WSL environment has no working Docker
 daemon (`docker: command not found` / daemon unreachable), which
 Testcontainers requires. Run it yourself once Docker is available:
-`mvn test -pl services/observation-service -Dtest=ObservationRepositoryAdapterRadiusSearchTest`.
+`mvn verify -Pintegration-tests -pl services/observation-service -am -Dit.test=ObservationRepositoryAdapterRadiusSearchIT`.
 
 ### 3.4 N+1 query
 
@@ -297,26 +297,91 @@ error, which is how the test updates were driven).
 
 ## 4. Testing/CI
 
-**Status: not started in this pass.**
+**Status: fixed 2026-09-18.**
 
-- api-gateway has zero tests (`find services/api-gateway -path "*/test/*"`
-  returns nothing) — including zero coverage of the exact "public route
-  accidentally lets an authenticated route through" class of bug §1.1 was
-  about, and now zero coverage of the new `RateLimitFilter` either.
-- No `Testcontainers`/`@DataJpaTest` anywhere — nothing exercises a real
-  JPA mapping against a real Postgres instance, so a schema/entity mismatch
-  like §3.3's dead geometry column would stay invisible to the test suite
-  indefinitely.
-- `.gitlab-ci.yml` has an `integration-test` stage that spins up real
-  `postgres`/`rabbitmq` containers and runs a Maven profile
-  (`-Pintegration-tests`) that **isn't defined anywhere in `pom.xml`**, and
-  there are zero `*IT.java` files in the repo — the job runs, starts two
-  real containers, and tests nothing. Worse than an honest "no CI coverage"
-  gap since it reads as covered in the pipeline config.
-- `.github/workflows/ci.yml` only runs `mvn test` — no formatting check, no
-  frontend build/lint, no image build, no dependency scan.
+### 4.1 api-gateway had zero tests
 
-**Not fixed in this pass.**
+**Problem:** `find services/api-gateway -path "*/test/*"` returned
+nothing — including zero coverage of the exact "public route accidentally
+lets an authenticated route through" class of bug §1.1 was about, and zero
+coverage of the §1.2 `RateLimitFilter`.
+
+**Fix:** `AuthFilterTest` and `RateLimitFilterTest` — plain unit tests, no
+Spring context (both filters are constructed directly; `MockServerWebExchange`
++ a mocked `GatewayFilterChain` stand in for the real gateway runtime).
+`AuthFilterTest` covers: public-prefix bypass, missing/malformed
+`Authorization` header → 401, a refresh-typed token rejected even though its
+signature is valid, a valid access token forwarded with the
+`X-User-Id`/`X-User-Email`/`X-User-Role` headers set, and the prod-profile
+default-secret guard throwing. `RateLimitFilterTest` covers: unthrottled
+paths passing regardless of volume, the identify (10/min) and bite-score
+(30/min) limits actually tripping on the Nth+1 request, and the limit being
+per-IP (a saturated IP doesn't affect a different one). 10 tests, all pass.
+
+### 4.2 No Testcontainers pattern; `.gitlab-ci.yml`'s `integration-test` profile didn't exist
+
+**Problem:** the `-Pintegration-tests` Maven profile `.gitlab-ci.yml`'s
+`integration-test` stage activated (and the `test-integration` Makefile
+target already called) **wasn't defined anywhere in `pom.xml`** — the job
+ran, started two real containers, and `mvn verify -Pintegration-tests`
+silently did nothing (an unrecognized `-P` flag isn't a Maven error). Worse
+than an honest "no CI coverage" gap since it read as covered in the
+pipeline config. §2.3 and §3.3 had since added real Testcontainers-backed
+tests (named `*Test.java`, so they ran via `mvn test`'s default surefire
+scope) but nothing separated "fast unit test" from "needs a real Postgres/
+RabbitMQ" — meaning plain `mvn test` was silently Docker-dependent too.
+
+**Fix:**
+- Root `pom.xml` gained a real `integration-tests` profile binding
+  `maven-failsafe-plugin` to `integration-test`+`verify`. Its default
+  include pattern (`**/*IT.java`) is what makes this useful: renaming
+  the three existing Testcontainers tests to that convention
+  (`ObservationRepositoryAdapterRadiusSearchIT`, `ObservationOutboxIT`,
+  `ObservationOutboxAtomicityIT` — was `*Test`) moved them out of
+  surefire's default scope automatically, with no include/exclude
+  configuration needed on either plugin. `mvn test` is now genuinely
+  Docker-independent; `mvn verify -Pintegration-tests` (or `make
+  test-integration`) is what actually runs them.
+- Hit one real Maven/Spring-Boot gotcha getting there: Failsafe's
+  `integration-test` phase runs *after* `package`, and by then a Spring
+  Boot module's main artifact is the repackaged executable jar
+  (`BOOT-INF/classes/...` layout) — JUnit's classpath scanner can't find
+  anything in that layout, so tests failed to even *discover* (`Tests run:
+  0`, then a bare `TestEngine with ID 'junit-jupiter' failed to discover
+  tests` with no other detail). Fixed by pointing Failsafe's
+  `classesDirectory` at `${project.build.outputDirectory}` (plain
+  `target/classes`) explicitly, bypassing the packaged jar. Confirmed by
+  running `mvn verify -Pintegration-tests` locally: discovery now finds and
+  attempts all three `*IT` classes (they still fail here on the same
+  Docker/testcontainers-can't-reach-the-daemon issue as before — but that's
+  the environment blocker, not a Maven wiring bug, and this repo's actual
+  CI (GitHub Actions, `ubuntu-latest`) has a real Docker daemon natively,
+  no dind needed, so it runs there — see `.github/workflows/ci.yml` below).
+- `.gitlab-ci.yml`'s `integration-test` job's `postgres`/`rabbitmq`
+  `services:` sidecars were never actually usable by Testcontainers-backed
+  tests anyway — Testcontainers spins up its *own* throwaway containers via
+  a Docker daemon, it doesn't connect to fixed service hostnames. Replaced
+  those sidecars with Docker-in-Docker (`docker:24-dind` + `DOCKER_HOST`/
+  `DOCKER_TLS_CERTDIR`), the same pattern the `.docker-build` jobs already
+  use further down the same file. **Unverified** — this repo's remote is
+  GitHub, not GitLab, so there's no live GitLab runner to confirm this
+  against; it's now structurally consistent with how the tests actually
+  work, which the previous version wasn't.
+- `.github/workflows/ci.yml` gained a second `integration-test` job running
+  `mvn verify -Pintegration-tests` on `ubuntu-latest` (kept separate from
+  the fast unit-test job so a slow/flaky container start doesn't block that
+  signal). This runs on a real GitHub-hosted Docker daemon — verified
+  green after push (see BACKLOG.md item G).
+
+**Noticed but out of scope:** `make fmt`/`make lint` in the `Makefile`
+invoke `spotless:apply`/`spotless:check checkstyle:check`, but neither
+plugin is actually configured in any `pom.xml` — both commands currently
+fail with "no plugin found for prefix". Pre-existing, unrelated to this
+audit item; not fixed here (choosing a formatting/lint policy is a separate
+decision, not a one-line fix). `.github/workflows/ci.yml` still has no
+formatting check, image build, or dependency scan — "frontend build/lint"
+from the original finding is now moot since the frontend was extracted to
+its own repos (`docs/README.md`'s frontend-repos change, 2026-09-14).
 
 ---
 

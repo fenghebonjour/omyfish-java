@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
     "minio.secret-key=test",
     "minio.bucket=test"
 })
-class ObservationOutboxAtomicityTest {
+class ObservationOutboxAtomicityIT {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

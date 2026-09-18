@@ -169,4 +169,38 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <!-- Testcontainers-backed *IT tests (real Postgres/RabbitMQ) only run under this profile,
+         via `mvn verify -Pintegration-tests` — kept out of the default `mvn test` so plain unit
+         tests stay fast and Docker-independent (WEAKNESS_AUDIT.md §4: this profile didn't exist
+         at all before, despite .gitlab-ci.yml's integration-test stage claiming to activate it). -->
+    <profiles>
+        <profile>
+            <id>integration-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.2.5</version>
+                        <configuration>
+                            <!-- The integration-test phase runs after package, where a Spring
+                                 Boot service's main artifact is the repackaged executable jar
+                                 (BOOT-INF/classes layout) — force plain target/classes instead,
+                                 or JUnit's classpath scanner can't find the test's own classes. -->
+                            <classesDirectory>${project.build.outputDirectory}</classesDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

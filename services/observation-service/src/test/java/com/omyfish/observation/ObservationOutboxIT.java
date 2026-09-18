@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     "minio.secret-key=test",
     "minio.bucket=test"
 })
-class ObservationOutboxIntegrationTest {
+class ObservationOutboxIT {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(

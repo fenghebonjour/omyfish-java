@@ -145,19 +145,20 @@ bug until 2026-08-28 (commit e53b418), fixed there via
 
 ---
 
-## [~] G — Weakness audit follow-up (ported from omyfish-dotnet)
+## [x] G — Weakness audit follow-up (ported from omyfish-dotnet)
 
-**Status:** IN PROGRESS (added 2026-09-11). `omyfish-dotnet` went through a
-senior-dev-style weakness audit (its `BACKLOG.md` item F) covering security,
-resilience, data-layer, and testing/CI findings, then asked for the same
-treatment across the other enterprise siblings. Full explanation in
-`docs/WEAKNESS_AUDIT.md` — this file is the "what shipped". This repo shares
-dotnet's microservices shape, so most findings translate directly. Security
-tier done 2026-09-11; most of the resilience tier done the same day
-(§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too; §3.3 (dead PostGIS
-column), the AI-species-persistence bonus, and the gitlab-ci docker-build
-bonus done 2026-09-17; §2.3 (the outbox pattern) done 2026-09-18 — only
-testing/CI remains, same as dotnet's own pacing across sessions.
+**Status:** DONE (added 2026-09-11, completed 2026-09-18). `omyfish-dotnet`
+went through a senior-dev-style weakness audit (its `BACKLOG.md` item F)
+covering security, resilience, data-layer, and testing/CI findings, then
+asked for the same treatment across the other enterprise siblings. Full
+explanation in `docs/WEAKNESS_AUDIT.md` — this file is the "what shipped".
+This repo shares dotnet's microservices shape, so most findings translate
+directly. Security tier done 2026-09-11; most of the resilience tier done
+the same day (§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too; §3.3 (dead
+PostGIS column), the AI-species-persistence bonus, and the gitlab-ci
+docker-build bonus done 2026-09-17; §2.3 (the outbox pattern) and §4
+(Testing/CI) done 2026-09-18 — every item now fixed or explicitly marked
+not-applicable, same pacing dotnet used across its own sessions.
 
 **Security — DONE 2026-09-11:**
 - ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
@@ -219,7 +220,7 @@ testing/CI remains, same as dotnet's own pacing across sessions.
   gets a stubbed empty response, confirmed unrelated to testcontainers
   version and confirmed pre-existing (§3.3's Testcontainers test hits the
   same wall here). Run
-  `mvn test -pl services/observation-service -Dtest=ObservationOutbox*Test`
+  `mvn verify -Pintegration-tests -pl services/observation-service -am -Dit.test=ObservationOutbox*IT`
   once that's resolved. All other tests in the module (20) pass.
 
 **Data layer:**
@@ -238,15 +239,43 @@ testing/CI remains, same as dotnet's own pacing across sessions.
   Verified via a new Testcontainers (`postgis/postgis`) test that compiles
   and the rest of the module's suite (14 tests) stays green, but **the new
   test itself is unexecuted** — no Docker daemon available in this session;
-  run `mvn test -pl services/observation-service
-  -Dtest=ObservationRepositoryAdapterRadiusSearchTest` once Docker is up.
+  run `mvn verify -Pintegration-tests -pl services/observation-service -am
+  -Dit.test=ObservationRepositoryAdapterRadiusSearchIT` once Docker is up.
+  (Now runs via the real `integration-tests` profile added below — this
+  test was renamed `*Test` → `*IT` as part of that fix.)
 
-**Testing/CI — not started, left for follow-up rounds** (see
-`WEAKNESS_AUDIT.md` for full detail on each):
-- api-gateway has zero tests (now including zero coverage of
-  the new `RateLimitFilter`); no Testcontainers/`@DataJpaTest` anywhere;
-  `.gitlab-ci.yml`'s `integration-test` stage runs a Maven profile that
-  doesn't exist and tests nothing despite looking covered.
+**Testing/CI — fixed 2026-09-18:**
+- ~~api-gateway has zero tests~~ — fixed: `AuthFilterTest` (public-path
+  bypass, missing/malformed/refresh-typed-token rejection, valid-token
+  header forwarding, prod-secret guard) + `RateLimitFilterTest`
+  (unthrottled paths, the 10/min and 30/min limits actually tripping,
+  per-IP isolation). 10 tests, plain unit tests, no Spring context needed.
+- ~~`.gitlab-ci.yml`'s `integration-test` stage runs a Maven profile that
+  doesn't exist~~ — fixed: root `pom.xml` gained a real `integration-tests`
+  profile (Failsafe, bound to `integration-test`+`verify`); the three
+  existing Testcontainers tests were renamed `*Test` → `*IT`
+  (`ObservationOutboxIT`, `ObservationOutboxAtomicityIT`,
+  `ObservationRepositoryAdapterRadiusSearchIT`), which moves them out of
+  `mvn test`'s default surefire scope into Failsafe's automatically (no
+  include/exclude config needed — that's the whole point of the naming
+  convention). Had to explicitly set Failsafe's `classesDirectory` to plain
+  `target/classes`, since its `integration-test` phase runs after
+  `package`, where a Spring Boot module's main artifact is the repackaged
+  executable jar (`BOOT-INF/classes` layout) that JUnit's classpath scanner
+  can't see into — without that, discovery failed with a bare `TestEngine
+  with ID 'junit-jupiter' failed to discover tests` and no other detail.
+  `.gitlab-ci.yml`'s `integration-test` job also had its `postgres`/
+  `rabbitmq` service sidecars (never actually reachable by Testcontainers,
+  which spins up its own containers) replaced with Docker-in-Docker,
+  matching the `.docker-build` jobs further down the same file —
+  **unverified**, no live GitLab remote for this repo. `.github/
+  workflows/ci.yml` gained a second `integration-test` job running `mvn
+  verify -Pintegration-tests` on `ubuntu-latest`'s native Docker daemon —
+  verified green after push.
+- `mvn test` is now genuinely Docker-independent across the whole repo
+  (confirmed via a full `mvn test` run) — previously the three
+  Testcontainers tests silently made default `mvn test` Docker-dependent
+  too, just not documented as such.
 - ~~Bonus: `.gitlab-ci.yml`'s Docker build stage omits identity-service and
   notification-service images~~ — **fixed 2026-09-17**: added
   `docker-identity-service`/`docker-notification-service` jobs mirroring the
@@ -263,8 +292,8 @@ the catalog lookup instead of reconstructing it every time. Verified via
 `IdentificationServiceTest` (10 tests) and a full `mvn test -pl
 services/species-service` (18 tests, green).
 
-**Remaining open items:** the Testing/CI section above — api-gateway's zero
-test coverage, the `.gitlab-ci.yml` `integration-test` stage running a
-Maven profile that doesn't exist, and `.github/workflows/ci.yml` only
-running `mvn test`. Each gets its own dated fix/verify/commit like the
-items above.
+**Remaining open items:** none — item G is complete. Noticed but out of
+scope while closing it out: `make fmt`/`make lint` invoke `spotless:apply`/
+`spotless:check checkstyle:check`, but neither plugin is configured in any
+`pom.xml`, so both commands currently fail; not fixed here since choosing a
+formatting/lint policy is a separate decision from this audit.

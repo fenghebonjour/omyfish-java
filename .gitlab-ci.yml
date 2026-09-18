@@ -39,16 +39,19 @@ unit-test:
       junit:
         - "**/target/surefire-reports/TEST-*.xml"
 
+# Testcontainers-backed *IT tests spin up their own throwaway Postgres/RabbitMQ containers via
+# a Docker daemon — they don't connect to fixed service hostnames, so this needs Docker-in-Docker
+# (same pattern as the .docker-build jobs below) rather than `postgres`/`rabbitmq` services.
+# WEAKNESS_AUDIT.md §4: `-Pintegration-tests` didn't exist as a Maven profile until this fix, so
+# this job previously ran and reported green while testing nothing.
 integration-test:
   stage: test
   image: maven:3.9-eclipse-temurin-21
   services:
-    - postgres:16
-    - rabbitmq:3.13-management
+    - docker:24-dind
   variables:
-    POSTGRES_DB: omyfish_test
-    POSTGRES_USER: omyfish
-    POSTGRES_PASSWORD: omyfish_test
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     - mvn $MAVEN_CLI_OPTS verify -Pintegration-tests
   artifacts:

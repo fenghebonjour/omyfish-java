@@ -7,8 +7,9 @@ make up                         # start all Docker services (reuses images — d
 make build-up                   # rebuild images + start (use after code changes)
 make down                       # stop all services
 make build                      # mvn clean package -DskipTests (host-side; does not affect Docker images)
-make test                       # mvn test (all modules)
+make test                       # mvn test (all modules) — fast, Docker-independent
 make test-service service=species-service  # single service
+make test-integration           # mvn verify -Pintegration-tests — Testcontainers *IT tests, needs Docker
 make migrate                    # run Flyway migrations (all services)
 make logs service=species-service          # tail logs
 make shell-postgres             # psql into omyfish DB
