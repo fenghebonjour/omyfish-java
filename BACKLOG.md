@@ -156,8 +156,8 @@ dotnet's microservices shape, so most findings translate directly. Security
 tier done 2026-09-11; most of the resilience tier done the same day
 (§2.1/§2.2/§2.4); §3.4 (N+1) done the same day too; §3.3 (dead PostGIS
 column), the AI-species-persistence bonus, and the gitlab-ci docker-build
-bonus done 2026-09-17 — §2.3 (the outbox pattern) and testing/CI remain,
-same as dotnet's own pacing across sessions.
+bonus done 2026-09-17; §2.3 (the outbox pattern) done 2026-09-18 — only
+testing/CI remains, same as dotnet's own pacing across sessions.
 
 **Security — DONE 2026-09-11:**
 - ~~No rate limiting on `/api/v1/species/**`~~ — fixed: a small in-memory
@@ -205,11 +205,22 @@ same as dotnet's own pacing across sessions.
   (`existsBySourceEventId`) instead of inserting a duplicate notification
   — same shape as dotnet's `Notification.SourceEventId` fix. Verified via
   a new `ObservationCreatedConsumerTest` case. (§2.4)
-- §2.3 dual-write without an outbox in `ObservationService.create()` —
-  **not done**, the largest item; dotnet's own fix for this took a
-  dedicated round to implement and verify against a live Postgres/RabbitMQ,
-  so this needs the same treatment rather than being folded into a broader
-  pass.
+- ~~§2.3 dual-write without an outbox in `ObservationService.create()`~~ —
+  **fixed 2026-09-18**: `OutboxEventPublisher` writes the event to a new
+  `outbox_events` table in the same transaction as the observation save
+  (via a `@Transactional` decorator in `config/`, since `application/` must
+  stay Spring-free); `OutboxPublisherJob` polls it separately and does the
+  actual RabbitMQ send, marking rows published — at-least-once, backed by
+  §2.4's existing consumer dedup. Verified via unit tests plus two
+  Testcontainers integration tests (happy path + an atomicity test that
+  forces the outbox write to fail and asserts the observation rolls back
+  too) — **written but unexecuted**: this WSL session's Docker Desktop
+  answers plain `docker`/`curl` calls fine but testcontainers' HTTP client
+  gets a stubbed empty response, confirmed unrelated to testcontainers
+  version and confirmed pre-existing (§3.3's Testcontainers test hits the
+  same wall here). Run
+  `mvn test -pl services/observation-service -Dtest=ObservationOutbox*Test`
+  once that's resolved. All other tests in the module (20) pass.
 
 **Data layer:**
 - ~~N+1 species lookup in `IdentificationService.identify()`~~ — fixed:
@@ -252,6 +263,8 @@ the catalog lookup instead of reconstructing it every time. Verified via
 `IdentificationServiceTest` (10 tests) and a full `mvn test -pl
 services/species-service` (18 tests, green).
 
-**Remaining open items, in planned order:** §2.3 (outbox — largest, needs
-live Postgres/RabbitMQ), then the Testing/CI items. Plan tracked in this
-session; each gets its own dated fix/verify/commit like the items above.
+**Remaining open items:** the Testing/CI section above — api-gateway's zero
+test coverage, the `.gitlab-ci.yml` `integration-test` stage running a
+Maven profile that doesn't exist, and `.github/workflows/ci.yml` only
+running `mvn test`. Each gets its own dated fix/verify/commit like the
+items above.

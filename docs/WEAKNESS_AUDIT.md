@@ -97,10 +97,7 @@ the included and excluded cases).
 
 ## 2. Resilience
 
-**Status: §2.1, §2.2, §2.4 fixed 2026-09-11.** §2.3 (the outbox pattern)
-deliberately still open — see BACKLOG.md item G (it needs a live
-Postgres/RabbitMQ to verify against, and dotnet's own equivalent fix took a
-dedicated round).
+**Status: §2.1, §2.2, §2.4 fixed 2026-09-11. §2.3 fixed 2026-09-18.**
 
 ### 2.1 No timeout/retry/circuit-breaker on the AI `WebClient`
 
@@ -141,13 +138,71 @@ regression it originally caused.
 
 ### 2.3 Dual-write without an outbox
 
-**Problem:** `ObservationService.create()` saves the aggregate, then
-separately (no `@Transactional`, no outbox) publishes
+**Status: fixed 2026-09-18.**
+
+**Problem:** `ObservationService.create()` saved the aggregate, then
+separately (no `@Transactional`, no outbox) published
 `ObservationCreatedEvent` via `RabbitMQEventPublisher`. Same crash-between-
-steps risk as dotnet's identical finding — and dotnet's own fix for this
-(MassTransit's EF Core outbox) took a dedicated round to implement and
-verify live. **Not fixed in this pass** — the largest single item still
-open; needs its own dedicated session per the same reasoning dotnet used.
+steps risk as dotnet's identical finding — a process crash (or network
+failure) between the save and the publish call would leave the observation
+persisted with no corresponding notification ever generated. Java has no
+MassTransit-style built-in outbox, so this needed a hand-built polling
+publisher rather than a framework feature.
+
+**Fix — transactional outbox + polling publisher:**
+- `V2__create_outbox_events_table.sql` adds `observation.outbox_events`
+  (id, event_type, exchange, routing_key, payload, created_at,
+  published_at nullable) with a partial index on unpublished rows.
+- `EventPublisherPort`'s Spring implementation changed from
+  `RabbitMQEventPublisher` (deleted — it published to RabbitMQ directly) to
+  `OutboxEventPublisher` (`adapter/out/persistence`), which just serializes
+  the domain event to JSON and inserts an outbox row — no broker call at
+  write time.
+- `OutboxPublisherJob` (`adapter/out/messaging`, `@Scheduled(fixedDelay =
+  5000)`) polls unpublished rows, sends each to RabbitMQ, then marks it
+  published — all inside one `@Transactional` method, so a crash between
+  the send and the commit just means the row gets resent next poll
+  (acceptable at-least-once — `ObservationCreatedConsumer` already dedups
+  by event id per §2.4, so a resend is a no-op on the consumer side).
+- The atomicity the whole pattern depends on — the observation insert and
+  the outbox insert committing or rolling back together — needed a
+  transaction boundary somewhere, and neither `domain/` nor `application/`
+  may import Spring annotations per this repo's hexagonal rule. Solution:
+  `TransactionalCreateObservationUseCase` (`config/`), a thin
+  `@Transactional`-annotated decorator around `ObservationService.create()`,
+  registered as the `@Primary` `CreateObservationUseCase` bean in
+  `AppConfig` ahead of the plain (non-transactional) `ObservationService`
+  bean that also implements the same interface. `ObservationService` itself
+  is untouched — no Spring in `application/`.
+- Single-instance assumption, same as the §1.2 rate limiter's: no claim/lock
+  step on the poll, so a second replica would double-publish every row
+  (harmless given consumer idempotency, but wasteful) — revisit if
+  observation-service is ever scaled horizontally.
+
+**Verified:**
+- `OutboxEventPublisherTest`, `OutboxPublisherJobTest` — plain Mockito unit
+  tests (outbox row shape, Rabbit send + mark-published behavior).
+- `ObservationOutboxIntegrationTest` — `@SpringBootTest` + Testcontainers
+  (real Postgres + real RabbitMQ): confirms `create()` leaves an unpublished
+  outbox row, and that running the poller actually delivers the message to
+  a bound test queue and marks the row published.
+- `ObservationOutboxAtomicityTest` — the actual guarantee the pattern is
+  for: a `@Primary` test `EventPublisherPort` forces a failure inside the
+  transaction, and asserts the observation row was rolled back too (not
+  left orphaned with no event).
+- All three new test classes are written and compile clean, but **could not
+  actually be executed in this session** — this WSL environment's Docker
+  Desktop responds to plain `docker`/`curl` calls against
+  `/var/run/docker.sock` correctly, but testcontainers' own HTTP client gets
+  back a stubbed, mostly-empty `/info` response with an HTTP 400, so
+  `DockerClientProviderStrategy` can't find a valid environment — confirmed
+  this isn't a testcontainers version issue (same failure on 1.19.8, 1.21.3)
+  and confirmed it's not new to this change (the pre-existing §3.3
+  Testcontainers test fails the exact same way here). Environment-level
+  Docker Desktop/WSL2 issue, not a code problem. Run
+  `mvn test -pl services/observation-service -Dtest=ObservationOutbox*Test`
+  once Testcontainers can actually reach a Docker daemon from this machine.
+  All non-Testcontainers tests in the module (20 tests) pass.
 
 ### 2.4 No consumer idempotency
 
