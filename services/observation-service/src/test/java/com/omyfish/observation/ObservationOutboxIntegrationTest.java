@@ -69,11 +69,18 @@ class ObservationOutboxIntegrationTest {
     @Autowired TopicExchange observationsExchange;
     @Autowired RabbitTemplate rabbitTemplate;
 
+    // One test, not two: both assertions share the same outbox table and broker, and a
+    // second @Test method would see whatever the first left behind (a previous version of
+    // this test split them and the first test's still-unpublished row leaked into the
+    // second test's queue read).
     @Test
-    void create_writesObservationAndOutboxRowInTheSameTransaction() {
+    void create_writesOutboxRowThenPublisherJobDeliversItAndMarksItPublished() {
+        Queue testQueue = new Queue("test.observation-outbox", false, false, true);
+        amqpAdmin.declareQueue(testQueue);
+        amqpAdmin.declareBinding(BindingBuilder.bind(testQueue).to(observationsExchange).with("observation.created"));
+
         Observation created = createObservationUseCase.create(command("Pike"));
 
-        assertThat(created.getId()).isNotNull();
         List<OutboxEventJpaEntity> pending = outboxRepository.findTop50ByPublishedAtIsNullOrderByCreatedAtAsc();
         assertThat(pending)
             .anySatisfy(e -> {
@@ -81,15 +88,7 @@ class ObservationOutboxIntegrationTest {
                 assertThat(e.getPayload()).contains(created.getId().toString());
                 assertThat(e.getPublishedAt()).isNull();
             });
-    }
 
-    @Test
-    void publisherJob_sendsPendingRowToRabbitAndMarksItPublished() {
-        Queue testQueue = new Queue("test.observation-outbox", false, false, true);
-        amqpAdmin.declareQueue(testQueue);
-        amqpAdmin.declareBinding(BindingBuilder.bind(testQueue).to(observationsExchange).with("observation.created"));
-
-        Observation created = createObservationUseCase.create(command("Muskellunge"));
         publisherJob.publishPending();
 
         var message = rabbitTemplate.receive(testQueue.getName(), 5000);
