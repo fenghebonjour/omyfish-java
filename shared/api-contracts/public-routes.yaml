@@ -1,0 +1,25 @@
+# Source of truth for which route prefixes must NOT require a JWT at the gateway.
+#
+# api-gateway's AuthFilter.PUBLIC_PREFIXES must match this list exactly (enforced by
+# api-gateway's PublicRoutesContractTest), and each owning service asserts its own actual
+# @RequestMapping-registered endpoints against the same list (each service's own
+# GatewayPublicRoutesContractTest) — neither side's test suite can see the other's code, so
+# this file is what both sides validate against instead of each other (BACKLOG.md item D).
+#
+# Adding a new endpoint under one of these prefixes makes it public automatically (AuthFilter
+# matches by String.startsWith, not path-segment boundaries) — the owning service's contract
+# test will fail until its expected-public-paths list is updated, forcing a conscious review
+# of whether that's actually intended.
+publicPrefixes:
+  - prefix: /api/v1/auth/
+    service: identity-service
+    reason: login/register/refresh/logout — can't require a token to get a token
+  - prefix: /api/v1/species
+    service: species-service
+    reason: identify/bite-score/regs/catalog browsing are all anonymous-friendly features
+  - prefix: /api/v1/observations/geojson
+    service: observation-service
+    reason: public map feed
+  - prefix: /api/v1/billing/webhook
+    service: identity-service
+    reason: Stripe calls this directly; signature-verified in the service, not JWT-gated

@@ -23,7 +23,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     // All species endpoints (identify, bite-score, catalog browsing) are public,
     // matching the dotnet stack; observation GeoJSON is the public map feed.
-    private static final List<String> PUBLIC_PREFIXES = List.of(
+    // Package-private (not private) so PublicRoutesContractTest can assert this list matches
+    // shared/api-contracts/public-routes.yaml (BACKLOG.md item D).
+    static final List<String> PUBLIC_PREFIXES = List.of(
         "/api/v1/auth/",
         "/api/v1/species",
         "/api/v1/observations/geojson",

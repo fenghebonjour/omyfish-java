@@ -1,0 +1,104 @@
+asyncapi: 2.6.0
+info:
+  title: ObservationCreatedEvent
+  version: 1.0.0
+  description: >
+    Published by observation-service via its transactional outbox (WEAKNESS_AUDIT.md §2.3) when
+    a user's fish observation is saved. Source of truth for the wire shape notification-service
+    consumes as com.omyfish.shared.events.ObservationCreatedEvent — producer and consumer
+    contract tests should validate against this file, not against each other's code.
+
+defaultContentType: application/json
+
+servers:
+  rabbitmq:
+    url: '{host}:5672'
+    protocol: amqp
+    variables:
+      host:
+        default: localhost
+
+channels:
+  omyfish.observations/observation.created:
+    description: >
+      Topic exchange "omyfish.observations" (durable), routing key "observation.created".
+      Bound by a quorum queue: omyfish.notifications.observation-created (consumer:
+      notification-service). Published by observation-service's OutboxPublisherJob polling the
+      outbox table, not directly by the request thread that creates the observation.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: omyfish.observations
+          type: topic
+          durable: true
+        bindingVersion: 0.3.0
+    publish:
+      summary: A user's fish observation was recorded.
+      operationId: observationCreated
+      message:
+        $ref: '#/components/messages/ObservationCreated'
+
+components:
+  messages:
+    ObservationCreated:
+      name: ObservationCreatedEvent
+      title: Observation Created
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ObservationCreatedEvent'
+
+  schemas:
+    ObservationCreatedEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - occurredOn
+        - eventType
+        - observationId
+        - userId
+        - speciesName
+        - imageStorageKey
+        - observedAt
+      properties:
+        eventId:
+          type: string
+          description: Random UUID assigned at construction, string-typed (not a UUID field) on the wire.
+        occurredOn:
+          type: string
+          format: date-time
+          description: Instant.now() at construction, ISO-8601 with offset.
+        eventType:
+          type: string
+          const: observation.created
+          description: >
+            DomainEvent's own type discriminator. Present on the wire because the outbox
+            serializes observation-service's internal domain event class directly (not the
+            shared consumer-facing record) — notification-service's consumer ignores it
+            (Jackson's default unknown-property tolerance). Listed here because this schema
+            documents the actual wire shape, not just the fields the consumer happens to read.
+        observationId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        speciesName:
+          type: string
+          minLength: 1
+        latitude:
+          type: ["number", "null"]
+          minimum: -90
+          maximum: 90
+          description: Null when the observation has no GPS location (GpsCoordinates.unknown()).
+        longitude:
+          type: ["number", "null"]
+          minimum: -180
+          maximum: 180
+        imageStorageKey:
+          type: string
+          minLength: 1
+        observedAt:
+          type: string
+          format: date-time

@@ -70,9 +70,10 @@ this repo.
 
 ---
 
-## [ ] D — Spec-driven contract tests for cross-service boundaries
+## [x] D — Spec-driven contract tests for cross-service boundaries
 
-**Status:** IN PROGRESS (2026-08-01). Piloted on `FishIdentifiedEvent`:
+**Status:** DONE (piloted 2026-08-01, remaining scope completed 2026-09-18).
+Piloted on `FishIdentifiedEvent`:
 `shared/omyfish-shared-events/asyncapi/fish-identified.yaml` (AsyncAPI schema,
 source of truth for the event's wire shape) +
 `services/species-service/src/test/java/com/omyfish/species/contract/FishIdentifiedEventContractTest.java`
@@ -81,7 +82,7 @@ source of truth for the event's wire shape) +
 just passes trivially — mutation-tested by tightening a schema bound and
 confirming the test fails, then reverting.
 
-**Scoping decision from this session:** apply this only where two
+**Scoping decision from the pilot session:** apply this only where two
 independently-tested Spring services must agree on something neither one's
 own test suite can verify — i.e. cross-service event contracts and the
 gateway route whitelist. Do **not** extend it to REST APIs like
@@ -90,19 +91,48 @@ one consumer (the Next.js frontend, same repo, edited in the same PR) —
 spec+contract-test overhead there would be enforcing agreement between two
 things already changed together, no real drift risk yet.
 
-**Remaining scope:**
-- [ ] `ObservationCreatedEvent` — same treatment (AsyncAPI schema + producer
-  contract test in observation-service).
-- [ ] Consumer-side contract tests for `FishIdentifiedEvent` in
-  observation-service and notification-service (current test only guards the
-  publisher, not either consumer).
-- [ ] Gateway route whitelist vs. actual controller `@RequestMapping`s —
-  needs its own spec artifact (likely a small OpenAPI-path-list check rather
-  than full AsyncAPI) so `AuthFilter.PUBLIC_PREFIXES` can't silently drift
-  from what's actually exposed.
-- [ ] Revisit if a second REST API consumer ever appears (public API, a
-  third service) — that's the trigger to add OpenAPI contract tests for the
-  REST surface too.
+**Remaining scope — all done 2026-09-18:**
+- ~~`ObservationCreatedEvent` — same treatment~~ — fixed:
+  `shared/omyfish-shared-events/asyncapi/observation-created.yaml` +
+  `ObservationCreatedEventContractTest` in observation-service, exercising
+  the real production path (`OutboxEventPublisher.publish()`, captured via
+  Mockito) rather than a hand-rolled parallel serialization. Surfaced a real
+  finding in the process: the outbox payload includes an `eventType` field
+  the shared consumer-facing record doesn't have, because the outbox
+  serializes observation-service's own domain event class directly — the
+  schema now documents that field as part of the actual wire shape rather
+  than pretending it doesn't exist. Mutation-tested (tightened a bound,
+  confirmed failure, reverted — the file wasn't yet tracked in git, so the
+  revert had to be done by hand rather than via `git checkout`).
+- ~~Consumer-side contract tests for `FishIdentifiedEvent`~~ — fixed:
+  `FishIdentifiedEventConsumerContractTest` in both observation-service and
+  notification-service. Each builds the message exactly as species-service's
+  own `Jackson2JsonMessageConverter` would send it, then feeds it through
+  *that service's own* configured converter (observation-service: default
+  `TYPE_ID` precedence; notification-service: `INFERRED`) plus a real
+  `MethodParameter` for that service's `FishIdentifiedConsumer.handle(...)`,
+  asserting record-equality after the round trip and that the consumer
+  doesn't throw. (`TYPE_ID` happens to also work for this one event today,
+  since all three services share the exact same `FishIdentifiedEvent`
+  class — unlike `ObservationCreatedEvent`, which is why notification-service
+  needed `INFERRED` in the first place per §2.3/§2.4's history.)
+- ~~Gateway route whitelist vs. actual controller `@RequestMapping`s~~ —
+  fixed: `shared/api-contracts/public-routes.yaml` (new spec artifact, a
+  small custom prefix+service+reason list, not full OpenAPI) is what both
+  sides validate against. `AuthFilter.PUBLIC_PREFIXES` changed from
+  `private` to package-private so api-gateway's `PublicRoutesContractTest`
+  can assert it matches the spec exactly. identity-service, species-service,
+  and observation-service each got a `GatewayPublicRoutesContractTest` that
+  reflects over their actual controllers' merged `@RequestMapping` values
+  (via `AnnotatedElementUtils` — resolves `@GetMapping`/`@PostMapping`/etc.
+  uniformly, no Spring context needed) and asserts the subset matching a
+  public prefix equals a hardcoded, reviewed expected set — a new endpoint
+  landing under an already-public prefix changes that actual subset and
+  fails the test until someone deliberately updates the expected set, which
+  is the actual protection this is for. All four contract tests
+  mutation-tested (broke one on purpose, confirmed the failure, reverted).
+- Revisit-if-second-REST-consumer-appears trigger from the pilot: still not
+  triggered, no change.
 
 ---
 
