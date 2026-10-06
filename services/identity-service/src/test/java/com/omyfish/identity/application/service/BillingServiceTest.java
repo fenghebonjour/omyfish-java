@@ -46,19 +46,38 @@ class BillingServiceTest {
     }
 
     @Test
-    void checkoutCompletedEvent_activatesSubscription() {
+    void startCheckout_attachesStripeIdsWithoutActivating() {
         Subscription sub = Subscription.startTrial(USER, 7);
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly"))
+            .thenReturn(Optional.of(new PaymentPort.SubscriptionIntent(
+                "cus_123", "sub_456", "secret_abc", "incomplete")));
+
+        Optional<PaymentPort.SubscriptionIntent> intent = billing.startCheckout(USER, "yearly");
+
+        assertThat(intent).isPresent();
+        assertThat(intent.get().clientSecret()).isEqualTo("secret_abc");
+        assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
+        assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_456");
+        assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.TRIALING);
+    }
+
+    @Test
+    void subscriptionUpdatedEvent_incompleteExpired_cancels() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachStripeIds("cus_123", "sub_456");
+        when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "checkout_completed", USER.toString(), "yearly",
-            "cus_123", "sub_456", null, null));
+            "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null));
 
         assertThat(handled).isTrue();
-        assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
-        assertThat(sub.getPlan()).isEqualTo("yearly");
-        assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
+        assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
     }
 
     @Test
@@ -69,7 +88,7 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "subscription_deleted", null, null, "cus_123", "sub_456", null, null));
+            "subscription_deleted", "cus_123", "sub_456", null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -84,7 +103,7 @@ class BillingServiceTest {
         Instant periodEnd = Instant.now().plusSeconds(30 * 86400);
 
         billing.applyEvent(new PaymentEvent(
-            "subscription_updated", null, null, "cus_123", "sub_456", "active", periodEnd));
+            "subscription_updated", "cus_123", "sub_456", "active", periodEnd));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
@@ -95,7 +114,7 @@ class BillingServiceTest {
         when(subscriptions.findByStripeCustomerId("cus_ghost")).thenReturn(Optional.empty());
 
         assertThat(billing.applyEvent(new PaymentEvent(
-            "subscription_updated", null, null, "cus_ghost", null, "active", null))).isFalse();
+            "subscription_updated", "cus_ghost", null, "active", null))).isFalse();
     }
 
     @Test

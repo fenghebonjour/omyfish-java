@@ -49,10 +49,13 @@ public class BillingController {
     ) {
         UUID userId = requireUser(authHeader);
         try {
-            String url = billing.checkoutUrl(userId, request.plan())
+            PaymentPort.SubscriptionIntent intent = billing.startCheckout(userId, request.plan())
                 .orElseThrow(() -> new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
-            return Map.of("checkoutUrl", url);
+            return Map.of(
+                "clientSecret", intent.clientSecret(),
+                "subscriptionId", intent.subscriptionId(),
+                "status", intent.status());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

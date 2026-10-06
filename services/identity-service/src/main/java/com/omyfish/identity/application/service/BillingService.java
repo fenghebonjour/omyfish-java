@@ -40,25 +40,24 @@ public class BillingService {
     }
 
     /** Empty when Stripe is not configured. */
-    public Optional<String> checkoutUrl(UUID userId, String plan) {
+    public Optional<PaymentPort.SubscriptionIntent> startCheckout(UUID userId, String plan) {
         if (!plan.equals("monthly") && !plan.equals("yearly")) {
             throw new IllegalArgumentException("plan must be monthly or yearly");
         }
         User user = users.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        return payments.createCheckoutUrl(userId, user.getEmail(), plan);
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            payments.createSubscriptionIntent(userId, user.getEmail(), plan);
+        intent.ifPresent(i -> {
+            Subscription sub = startTrial(userId);
+            sub.attachStripeIds(i.customerId(), i.subscriptionId());
+            subscriptions.save(sub);
+        });
+        return intent;
     }
 
     public boolean applyEvent(PaymentEvent event) {
         switch (event.type()) {
-            case "checkout_completed" -> {
-                UUID userId = UUID.fromString(event.userId());
-                Subscription sub = startTrial(userId);
-                // Authoritative period end arrives on subscription_updated.
-                sub.activate(event.plan(), null, event.customerId(), event.subscriptionId());
-                subscriptions.save(sub);
-                return true;
-            }
             case "subscription_updated", "subscription_deleted" -> {
                 Optional<Subscription> found =
                     subscriptions.findByStripeCustomerId(event.customerId());
@@ -66,7 +65,8 @@ public class BillingService {
                 Subscription sub = found.get();
                 if (event.type().equals("subscription_deleted")
                     || "canceled".equals(event.providerStatus())
-                    || "unpaid".equals(event.providerStatus())) {
+                    || "unpaid".equals(event.providerStatus())
+                    || "incomplete_expired".equals(event.providerStatus())) {
                     sub.cancel();
                 } else {
                     sub.activate(sub.getPlan() != null ? sub.getPlan() : "monthly",

@@ -63,6 +63,13 @@ public class Subscription {
         this.updatedAt = Instant.now();
     }
 
+    /** Records Stripe ids as soon as they're known, without changing status. */
+    public void attachStripeIds(String stripeCustomerId, String stripeSubscriptionId) {
+        this.stripeCustomerId = stripeCustomerId;
+        this.stripeSubscriptionId = stripeSubscriptionId;
+        this.updatedAt = Instant.now();
+    }
+
     public void cancel() {
         this.status = CANCELED;
         this.updatedAt = Instant.now();

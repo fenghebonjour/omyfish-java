@@ -7,7 +7,7 @@ import java.util.UUID;
 /** Payment provider boundary (Stripe). Empty results mean "not configured". */
 public interface PaymentPort {
 
-    Optional<String> createCheckoutUrl(UUID userId, String email, String plan);
+    Optional<SubscriptionIntent> createSubscriptionIntent(UUID userId, String email, String plan);
 
     /** Verifies the webhook signature and maps the event; empty if invalid/unconfigured. */
     Optional<PaymentEvent> verifyWebhook(String payload, String signature);
@@ -15,12 +15,17 @@ public interface PaymentPort {
     boolean isConfigured();
 
     record PaymentEvent(
-        String type,             // checkout_completed | subscription_updated | subscription_deleted
-        String userId,           // set for checkout_completed
-        String plan,             // set for checkout_completed
+        String type,             // subscription_updated | subscription_deleted
         String customerId,
         String subscriptionId,
-        String providerStatus,   // e.g. canceled / unpaid / active
+        String providerStatus,   // e.g. canceled / unpaid / incomplete_expired / active
         Instant periodEnd
+    ) {}
+
+    record SubscriptionIntent(
+        String customerId,
+        String subscriptionId,
+        String clientSecret,
+        String status
     ) {}
 }
