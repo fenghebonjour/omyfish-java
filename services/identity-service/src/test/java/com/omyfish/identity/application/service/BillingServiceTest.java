@@ -1,6 +1,9 @@
 package com.omyfish.identity.application.service;
 
+import com.omyfish.identity.domain.model.IdempotencyRecord;
 import com.omyfish.identity.domain.model.Subscription;
+import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
+import com.omyfish.identity.domain.port.out.IdempotencyKeyRepository;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
@@ -27,9 +30,11 @@ class BillingServiceTest {
     @Mock SubscriptionRepository subscriptions;
     @Mock UserRepository users;
     @Mock PaymentPort payments;
+    @Mock IdempotencyKeyRepository idempotencyKeys;
     @InjectMocks BillingService billing;
 
     private static final UUID USER = UUID.randomUUID();
+    private static final String IDEMPOTENCY_KEY = "idem-key-1";
 
     @Test
     void startTrial_isIdempotent() {
@@ -54,17 +59,83 @@ class BillingServiceTest {
                 "angler@example.com", "hash", "user")));
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly"))
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER))
+            .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER));
+        when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly", IDEMPOTENCY_KEY))
             .thenReturn(Optional.of(new PaymentPort.SubscriptionIntent(
                 "cus_123", "sub_456", "secret_abc", "incomplete")));
 
-        Optional<PaymentPort.SubscriptionIntent> intent = billing.startCheckout(USER, "yearly");
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY);
 
         assertThat(intent).isPresent();
         assertThat(intent.get().clientSecret()).isEqualTo("secret_abc");
         assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
         assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_456");
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.TRIALING);
+        verify(idempotencyKeys).save(any());
+    }
+
+    @Test
+    void startCheckout_withCompletedIdempotencyKey_replaysStoredResultWithoutCallingStripe() {
+        IdempotencyRecord record =
+            IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER);
+        record.completeCheckout("cus_123", "sub_456", "secret_abc", "incomplete");
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.of(record));
+
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY);
+
+        assertThat(intent).isPresent();
+        assertThat(intent.get().clientSecret()).isEqualTo("secret_abc");
+        verifyNoInteractions(payments);
+        verify(users, never()).findById(any());
+    }
+
+    @Test
+    void startCheckout_withInProgressIdempotencyKey_throwsConflict() {
+        IdempotencyRecord inProgress =
+            IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER);
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.of(inProgress));
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IdempotencyConflictException.class);
+    }
+
+    @Test
+    void startCheckout_withIdempotencyKeyUsedByAnotherUser_throws() {
+        IdempotencyRecord record = IdempotencyRecord.reserve(
+            IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, UUID.randomUUID());
+        record.completeCheckout("cus_123", "sub_456", "secret_abc", "incomplete");
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void startCheckout_whenStripeCallFails_releasesReservationForRetry() {
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+        IdempotencyRecord reservation =
+            IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER);
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER))
+            .thenReturn(reservation);
+        when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly", IDEMPOTENCY_KEY))
+            .thenThrow(new IllegalStateException("Stripe checkout failed: boom"));
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalStateException.class);
+
+        verify(idempotencyKeys).delete(reservation);
     }
 
     @Test
@@ -166,31 +237,75 @@ class BillingServiceTest {
     void refund_delegatesToPaymentPort() {
         Subscription sub = Subscription.startTrial(USER, 7);
         sub.attachStripeIds("cus_123", "sub_456");
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.empty());
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER))
+            .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER));
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
-        when(payments.refundSubscription("sub_456", 500L))
+        when(payments.refundSubscription("sub_456", 500L, IDEMPOTENCY_KEY))
             .thenReturn(Optional.of(new PaymentPort.RefundResult("re_1", "succeeded", 500L)));
 
-        PaymentPort.RefundResult result = billing.refund(USER, 500L);
+        PaymentPort.RefundResult result = billing.refund(USER, 500L, IDEMPOTENCY_KEY);
 
         assertThat(result.refundId()).isEqualTo("re_1");
         assertThat(result.amountCents()).isEqualTo(500L);
+        verify(idempotencyKeys).save(any());
     }
 
     @Test
     void refund_noSubscription_throws() {
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.empty());
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> billing.refund(USER, null))
+        assertThatThrownBy(() -> billing.refund(USER, null, IDEMPOTENCY_KEY))
             .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void refund_noStripeSubscriptionId_throws() {
         Subscription sub = Subscription.startTrial(USER, 7);
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.empty());
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
 
-        assertThatThrownBy(() -> billing.refund(USER, null))
+        assertThatThrownBy(() -> billing.refund(USER, null, IDEMPOTENCY_KEY))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void refund_withCompletedIdempotencyKey_replaysStoredResultWithoutCallingStripe() {
+        IdempotencyRecord record =
+            IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER);
+        record.completeRefund("re_1", "succeeded", 500L);
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.of(record));
+
+        PaymentPort.RefundResult result = billing.refund(USER, 500L, IDEMPOTENCY_KEY);
+
+        assertThat(result.refundId()).isEqualTo("re_1");
+        verifyNoInteractions(payments);
+        verify(subscriptions, never()).findByUserId(any());
+    }
+
+    @Test
+    void refund_whenStripeCallFails_releasesReservationForRetry() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachStripeIds("cus_123", "sub_456");
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.empty());
+        IdempotencyRecord reservation =
+            IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER);
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER))
+            .thenReturn(reservation);
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(payments.refundSubscription("sub_456", null, IDEMPOTENCY_KEY))
+            .thenThrow(new IllegalStateException("Stripe refund failed: boom"));
+
+        assertThatThrownBy(() -> billing.refund(USER, null, IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalStateException.class);
+
+        verify(idempotencyKeys).delete(reservation);
     }
 
     @Test

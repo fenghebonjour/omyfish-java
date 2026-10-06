@@ -7,7 +7,8 @@ import java.util.UUID;
 /** Payment provider boundary (Stripe). Empty results mean "not configured". */
 public interface PaymentPort {
 
-    Optional<SubscriptionIntent> createSubscriptionIntent(UUID userId, String email, String plan);
+    Optional<SubscriptionIntent> createSubscriptionIntent(
+        UUID userId, String email, String plan, String idempotencyKey);
 
     /** Tokenizes a future off-session payment method for the customer. */
     Optional<SetupIntentResult> createSetupIntent(UUID userId, String email);
@@ -16,7 +17,8 @@ public interface PaymentPort {
     void setDefaultPaymentMethod(String customerId, String paymentMethodId);
 
     /** Full refund when amountCents is null, partial otherwise. Empty if nothing to refund. */
-    Optional<RefundResult> refundSubscription(String stripeSubscriptionId, Long amountCents);
+    Optional<RefundResult> refundSubscription(
+        String stripeSubscriptionId, Long amountCents, String idempotencyKey);
 
     /** Verifies the webhook signature and maps the event; empty if invalid/unconfigured. */
     Optional<PaymentEvent> verifyWebhook(String payload, String signature);

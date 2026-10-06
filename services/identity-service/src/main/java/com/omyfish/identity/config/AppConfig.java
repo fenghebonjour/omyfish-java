@@ -2,6 +2,7 @@ package com.omyfish.identity.config;
 
 import com.omyfish.identity.adapter.out.payment.StripePaymentAdapter;
 import com.omyfish.identity.adapter.out.persistence.ApiKeyRepositoryAdapter;
+import com.omyfish.identity.adapter.out.persistence.IdempotencyKeyRepositoryAdapter;
 import com.omyfish.identity.adapter.out.persistence.SubscriptionRepositoryAdapter;
 import com.omyfish.identity.adapter.out.persistence.UserRepositoryAdapter;
 import com.omyfish.identity.adapter.out.security.JwtTokenAdapter;
@@ -94,8 +95,10 @@ public class AppConfig {
     public BillingService billingService(
         SubscriptionRepositoryAdapter subscriptionRepository,
         UserRepositoryAdapter userRepository,
-        StripePaymentAdapter paymentPort
+        StripePaymentAdapter paymentPort,
+        IdempotencyKeyRepositoryAdapter idempotencyKeyRepository
     ) {
-        return new BillingService(subscriptionRepository, userRepository, paymentPort);
+        return new BillingService(
+            subscriptionRepository, userRepository, paymentPort, idempotencyKeyRepository);
     }
 }

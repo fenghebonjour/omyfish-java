@@ -52,7 +52,7 @@ public class StripePaymentAdapter implements PaymentPort {
 
     @Override
     public Optional<SubscriptionIntent> createSubscriptionIntent(
-        UUID userId, String email, String plan
+        UUID userId, String email, String plan, String idempotencyKey
     ) {
         String priceId = priceIds.getOrDefault(plan, "");
         if (secretKey.isBlank() || priceId.isBlank()) {
@@ -62,6 +62,10 @@ public class StripePaymentAdapter implements PaymentPort {
             RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
             String customerId = findOrCreateCustomer(userId, email, options);
 
+            RequestOptions createOptions = RequestOptions.builder()
+                .setApiKey(secretKey)
+                .setIdempotencyKey(idempotencyKey)
+                .build();
             SubscriptionCreateParams params = SubscriptionCreateParams.builder()
                 .setCustomer(customerId)
                 .addItem(SubscriptionCreateParams.Item.builder().setPrice(priceId).build())
@@ -70,7 +74,7 @@ public class StripePaymentAdapter implements PaymentPort {
                 .putMetadata("user_id", userId.toString())
                 .putMetadata("plan", plan)
                 .build();
-            Subscription subscription = Subscription.create(params, options);
+            Subscription subscription = Subscription.create(params, createOptions);
 
             Invoice invoice = subscription.getLatestInvoiceObject();
             String clientSecret = invoice == null || invoice.getConfirmationSecret() == null
@@ -144,7 +148,9 @@ public class StripePaymentAdapter implements PaymentPort {
     }
 
     @Override
-    public Optional<RefundResult> refundSubscription(String stripeSubscriptionId, Long amountCents) {
+    public Optional<RefundResult> refundSubscription(
+        String stripeSubscriptionId, Long amountCents, String idempotencyKey
+    ) {
         if (secretKey.isBlank() || stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) {
             return Optional.empty();
         }
@@ -174,7 +180,11 @@ public class StripePaymentAdapter implements PaymentPort {
             if (amountCents != null) {
                 params.setAmount(amountCents);
             }
-            Refund refund = Refund.create(params.build(), options);
+            RequestOptions refundOptions = RequestOptions.builder()
+                .setApiKey(secretKey)
+                .setIdempotencyKey(idempotencyKey)
+                .build();
+            Refund refund = Refund.create(params.build(), refundOptions);
             return Optional.of(new RefundResult(refund.getId(), refund.getStatus(), amountCents));
         } catch (Exception e) {
             throw new IllegalStateException("Stripe refund failed: " + e.getMessage(), e);

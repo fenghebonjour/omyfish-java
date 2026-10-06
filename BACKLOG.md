@@ -327,3 +327,125 @@ scope while closing it out: `make fmt`/`make lint` invoke `spotless:apply`/
 `spotless:check checkstyle:check`, but neither plugin is configured in any
 `pom.xml`, so both commands currently fail; not fixed here since choosing a
 formatting/lint policy is a separate decision from this audit.
+
+---
+
+## [x] H — Billing/payments: 3DS checkout, admin refunds, saved payment methods
+
+**Status:** DONE (2026-10-06, commits 7651f63, 0054adc, 09f7c50). Three Stripe
+changes in `identity-service`'s billing slice, same session:
+
+- ~~Checkout hidden SCA/3DS behind Stripe's hosted redirect~~ — fixed
+  (7651f63): `/billing/checkout` no longer creates a Stripe Checkout Session;
+  it creates a Subscription with `payment_behavior=default_incomplete` and
+  returns `{clientSecret, subscriptionId, status}`, so 3DS confirmation
+  happens explicitly client-side via the PaymentIntent's client secret.
+  Webhook handling dropped the now-unused `checkout.session.completed` case
+  and treats `incomplete_expired` subscriptions as canceled.
+- ~~No way to refund a subscription~~ — fixed (0054adc):
+  `POST /api/v1/admin/subscriptions/{userId}/refund` (full or partial via
+  optional `amountCents`), alongside the existing grant/revoke/extend-trial
+  admin actions. Resolves the subscription's paid invoice to a payment
+  intent via `InvoicePayment` and issues a Stripe `Refund` against it; local
+  subscription status is left untouched, matching how `revoke` is a separate
+  explicit action.
+- ~~No way to save a card independent of a subscription purchase~~ — fixed
+  (09f7c50): `POST /api/v1/billing/payment-method/setup` issues a Stripe
+  `SetupIntent` (`usage=off_session`) so a card can be tokenized and attached
+  to the customer outside the checkout flow. A new `setup_intent.succeeded`
+  webhook case sets the resulting payment method as the customer's default
+  via `PaymentPort.setDefaultPaymentMethod`, so future subscription invoices
+  can actually charge the saved card off-session.
+
+Verified via updated `BillingServiceTest` (identity-service unit suite);
+full `mvn test -pl services/identity-service -am` green. Not tracked against
+a prior backlog entry — this was new scope, not a ported/audited item.
+
+---
+
+## [ ] I — Payment module hardening (idempotency, reconciliation, resilience)
+
+**Status:** IN PROGRESS (2026-10-06). Prompted by mapping item H's billing module
+against standard payment-interview architecture questions (industry MVP
+checklist: idempotency, state machine, retries, reconciliation, provider
+abstraction, PCI scope, observability — see `docs/PAYMENT_QUESTIONS.md`,
+gitignored). Reviewed the actual code (`BillingService`,
+`StripePaymentAdapter`, `PaymentPort`, `BillingController`) rather than
+guessing; findings below are real gaps, not assumed ones. Ordered MVP-first
+(cheapest, highest-risk items first), each independently shippable:
+
+1. **No idempotency on `checkout` / `payment-method/setup` / `refund`.**
+   A client retry (e.g. after a timeout) re-enters `BillingService` and
+   calls Stripe again — `startCheckout` would create a second Stripe
+   Subscription for the same user. This is exactly the flagship "customer
+   clicks Pay once, gets charged twice" scenario. MVP fix: accept a client
+   `Idempotency-Key` header on these three endpoints, record
+   `(key, userId, endpoint) -> result` in a new small table before calling
+   Stripe, short-circuit a repeat key to the stored result instead of
+   re-calling. Pass the same key through to Stripe's own
+   `RequestOptions.setIdempotencyKey(...)` as a second layer (currently
+   never set — grepped, no idempotency key passed to Stripe anywhere in
+   `StripePaymentAdapter`).
+   **`checkout` and `refund` done (2026-10-06, uncommitted):**
+   `Idempotency-Key` is now a required header on `POST /billing/checkout`
+   and `POST /api/v1/admin/subscriptions/{userId}/refund`. A new
+   `identity.idempotency_keys` table (`V4__add_idempotency_keys.sql`,
+   `IdempotencyRecord` domain entity behind an `IdempotencyKeyRepository`
+   port) reserves `(idempotencyKey, endpoint)` before the Stripe call via
+   `jpa.save()`, relying on a DB unique constraint to reject a concurrent
+   duplicate (translated to `IdempotencyConflictException` → 409); a
+   completed reservation replays its stored result without touching Stripe
+   again; a failed Stripe call deletes the reservation so the same key can
+   be retried once the transient error clears — safe because Stripe's own
+   idempotency key (now passed through on `Subscription.create` and
+   `Refund.create`) still protects against a true duplicate even if our
+   local row was cleared. A key presented by a different `userId` than the
+   one who reserved it is rejected rather than replayed, to avoid leaking
+   another user's checkout/refund result. `payment-method/setup` was left
+   out of this pass — not asked for, and lower risk than checkout/refund
+   since it never moves money by itself. Verified via 9 new
+   `BillingServiceTest` cases (replay, in-progress conflict, cross-user
+   rejection, release-on-failure, for both endpoints) — full
+   `mvn test -pl services/identity-service -am` green (38 tests). Known
+   gap carried over from the plan rather than silently fixed: the existing
+   frontend (separate repo) doesn't send this header yet, so checkout will
+   currently 400 there until it's updated to generate and send one.
+2. **No webhook event dedup.** `PaymentPort.PaymentEvent` doesn't carry
+   Stripe's event id, and `BillingService.applyEvent()` has no dedup check.
+   Stripe can and does redeliver webhooks; today's handling happens to be
+   mostly idempotent in effect (re-applying the same status is harmless),
+   but that's incidental, not designed. Add the event id to `PaymentEvent`
+   and a `processed_webhook_events` table checked before `applyEvent()`
+   runs.
+3. **Crash-after-Stripe-call-before-save is unrecovered.** In
+   `startCheckout`/`startPaymentMethodSetup`, if the process dies between
+   the Stripe call succeeding and `subscriptions.save(sub)` persisting the
+   Stripe customer/subscription id, the local row never links to Stripe —
+   and the later `subscription_updated` webhook can't reconcile either,
+   since `applyEvent` looks the subscription up **by** `stripeCustomerId`.
+   MVP fix: a scheduled (or admin-triggered) reconciliation job that lists
+   recent Stripe subscriptions for customers missing/mismatched locally and
+   repairs the link — the standard "webhooks aren't enough, you still need
+   a reconciliation job" answer from the question bank, made concrete here.
+4. **No timeout/retry policy on Stripe SDK calls.** `StripePaymentAdapter`
+   builds `RequestOptions` with just an API key; no connect/read timeout,
+   no retry-with-backoff. Mirror the pattern already used for the AI
+   service's `WebClient` (`WEAKNESS_AUDIT.md` §2.1): add an explicit
+   timeout. Do **not** add blind retries on these calls — per the question
+   bank's own framing, a failed charge/subscription-create must never be
+   retried without the idempotency key from item 1 in place first, so this
+   task is sequenced after item 1.
+5. **Billing endpoints aren't rate-limited.** `RateLimitFilter` (added in
+   item G, §1.2) only covers `/api/v1/species/**`. `/billing/checkout` and
+   `/billing/payment-method/setup` call out to Stripe and are
+   user-authenticated but still abusable; add them to the same filter's
+   covered prefixes.
+
+**Explicitly not doing (documented so it isn't re-proposed):** a local
+payment-event audit ledger table independent of Stripe's own dashboard/API —
+Stripe already is the system of record for raw transaction history here,
+and duplicating it has real compliance/consistency cost; revisit only if
+support/compliance needs querying payment history without hitting Stripe's
+API. Not storing any card data locally is already correct (Stripe
+Checkout/Elements + tokenization keep this service out of PCI SAQ D scope)
+and needs no change.

@@ -2,6 +2,7 @@ package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.domain.model.Subscription;
+import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.TokenPort;
 import org.springframework.http.HttpStatus;
@@ -45,19 +46,23 @@ public class BillingController {
     @PostMapping("/checkout")
     public Map<String, String> checkout(
         @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
         @RequestBody CheckoutRequest request
     ) {
         UUID userId = requireUser(authHeader);
         try {
-            PaymentPort.SubscriptionIntent intent = billing.startCheckout(userId, request.plan())
-                .orElseThrow(() -> new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
+            PaymentPort.SubscriptionIntent intent =
+                billing.startCheckout(userId, request.plan(), idempotencyKey)
+                    .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
             return Map.of(
                 "clientSecret", intent.clientSecret(),
                 "subscriptionId", intent.subscriptionId(),
                 "status", intent.status());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (IdempotencyConflictException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
     }
 

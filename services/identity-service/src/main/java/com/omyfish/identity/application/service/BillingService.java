@@ -1,7 +1,10 @@
 package com.omyfish.identity.application.service;
 
+import com.omyfish.identity.domain.model.IdempotencyRecord;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.model.User;
+import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
+import com.omyfish.identity.domain.port.out.IdempotencyKeyRepository;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
@@ -22,12 +25,14 @@ public class BillingService {
     private final SubscriptionRepository subscriptions;
     private final UserRepository users;
     private final PaymentPort payments;
+    private final IdempotencyKeyRepository idempotencyKeys;
 
     public BillingService(SubscriptionRepository subscriptions, UserRepository users,
-                          PaymentPort payments) {
+                          PaymentPort payments, IdempotencyKeyRepository idempotencyKeys) {
         this.subscriptions = subscriptions;
         this.users = users;
         this.payments = payments;
+        this.idempotencyKeys = idempotencyKeys;
     }
 
     public Subscription startTrial(UUID userId) {
@@ -40,20 +45,55 @@ public class BillingService {
     }
 
     /** Empty when Stripe is not configured. */
-    public Optional<PaymentPort.SubscriptionIntent> startCheckout(UUID userId, String plan) {
+    public Optional<PaymentPort.SubscriptionIntent> startCheckout(
+        UUID userId, String plan, String idempotencyKey
+    ) {
         if (!plan.equals("monthly") && !plan.equals("yearly")) {
             throw new IllegalArgumentException("plan must be monthly or yearly");
         }
+        Optional<IdempotencyRecord> existing =
+            idempotencyKeys.find(idempotencyKey, IdempotencyRecord.CHECKOUT);
+        if (existing.isPresent()) {
+            return Optional.of(replayedCheckout(existing.get(), userId));
+        }
+
         User user = users.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        Optional<PaymentPort.SubscriptionIntent> intent =
-            payments.createSubscriptionIntent(userId, user.getEmail(), plan);
-        intent.ifPresent(i -> {
+
+        IdempotencyRecord reservation =
+            idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.CHECKOUT, userId);
+        try {
+            Optional<PaymentPort.SubscriptionIntent> intent =
+                payments.createSubscriptionIntent(userId, user.getEmail(), plan, idempotencyKey);
+            if (intent.isEmpty()) {
+                idempotencyKeys.delete(reservation);
+                return Optional.empty();
+            }
+            PaymentPort.SubscriptionIntent i = intent.get();
             Subscription sub = startTrial(userId);
             sub.attachStripeIds(i.customerId(), i.subscriptionId());
             subscriptions.save(sub);
-        });
-        return intent;
+
+            reservation.completeCheckout(i.customerId(), i.subscriptionId(), i.clientSecret(), i.status());
+            idempotencyKeys.save(reservation);
+            return intent;
+        } catch (RuntimeException e) {
+            idempotencyKeys.delete(reservation);
+            throw e;
+        }
+    }
+
+    private PaymentPort.SubscriptionIntent replayedCheckout(IdempotencyRecord record, UUID userId) {
+        if (!record.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("Idempotency key already used");
+        }
+        if (!record.isCompleted()) {
+            throw new IdempotencyConflictException(
+                "A checkout with this idempotency key is already in progress");
+        }
+        return new PaymentPort.SubscriptionIntent(
+            record.getCustomerId(), record.getSubscriptionId(),
+            record.getClientSecret(), record.getCheckoutStatus());
     }
 
     /** Empty when Stripe is not configured. */
@@ -70,15 +110,45 @@ public class BillingService {
         return intent;
     }
 
-    public PaymentPort.RefundResult refund(UUID userId, Long amountCents) {
+    public PaymentPort.RefundResult refund(UUID userId, Long amountCents, String idempotencyKey) {
+        Optional<IdempotencyRecord> existing =
+            idempotencyKeys.find(idempotencyKey, IdempotencyRecord.REFUND);
+        if (existing.isPresent()) {
+            return replayedRefund(existing.get(), userId);
+        }
+
         Subscription sub = subscriptions.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
         if (sub.getStripeSubscriptionId() == null) {
             throw new IllegalArgumentException("No Stripe subscription on file");
         }
-        return payments.refundSubscription(sub.getStripeSubscriptionId(), amountCents)
-            .orElseThrow(() -> new IllegalStateException(
-                "Stripe is not configured or there is nothing to refund"));
+
+        IdempotencyRecord reservation =
+            idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.REFUND, userId);
+        try {
+            PaymentPort.RefundResult result = payments.refundSubscription(
+                    sub.getStripeSubscriptionId(), amountCents, idempotencyKey)
+                .orElseThrow(() -> new IllegalStateException(
+                    "Stripe is not configured or there is nothing to refund"));
+            reservation.completeRefund(result.refundId(), result.status(), result.amountCents());
+            idempotencyKeys.save(reservation);
+            return result;
+        } catch (RuntimeException e) {
+            idempotencyKeys.delete(reservation);
+            throw e;
+        }
+    }
+
+    private PaymentPort.RefundResult replayedRefund(IdempotencyRecord record, UUID userId) {
+        if (!record.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("Idempotency key already used");
+        }
+        if (!record.isCompleted()) {
+            throw new IdempotencyConflictException(
+                "A refund with this idempotency key is already in progress");
+        }
+        return new PaymentPort.RefundResult(
+            record.getRefundId(), record.getRefundStatus(), record.getAmountCents());
     }
 
     public boolean applyEvent(PaymentEvent event) {

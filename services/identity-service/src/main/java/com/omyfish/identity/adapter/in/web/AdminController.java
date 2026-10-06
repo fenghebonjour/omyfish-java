@@ -3,6 +3,7 @@ package com.omyfish.identity.adapter.in.web;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
+import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -86,12 +87,14 @@ public class AdminController {
     @PostMapping("/subscriptions/{userId}/refund")
     public Map<String, Object> refund(
         @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @RequestHeader("Idempotency-Key") String idempotencyKey,
         @PathVariable UUID userId,
         @RequestBody(required = false) RefundRequest request
     ) {
         requireAdmin(authHeader);
         try {
-            var result = billing.refund(userId, request == null ? null : request.amountCents());
+            var result = billing.refund(
+                userId, request == null ? null : request.amountCents(), idempotencyKey);
             var map = new java.util.LinkedHashMap<String, Object>();
             map.put("refundId", result.refundId());
             map.put("status", result.status());
@@ -101,6 +104,8 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         } catch (IllegalStateException e) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+        } catch (IdempotencyConflictException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
     }
 
