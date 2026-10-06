@@ -75,7 +75,7 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null));
+            "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -89,7 +89,7 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "subscription_deleted", "cus_123", "sub_456", null, null));
+            "subscription_deleted", "cus_123", "sub_456", null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -104,7 +104,7 @@ class BillingServiceTest {
         Instant periodEnd = Instant.now().plusSeconds(30 * 86400);
 
         billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_123", "sub_456", "active", periodEnd));
+            "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
@@ -115,7 +115,7 @@ class BillingServiceTest {
         when(subscriptions.findByStripeCustomerId("cus_ghost")).thenReturn(Optional.empty());
 
         assertThat(billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_ghost", null, "active", null))).isFalse();
+            "subscription_updated", "cus_ghost", null, "active", null, null))).isFalse();
     }
 
     @Test
@@ -132,6 +132,34 @@ class BillingServiceTest {
         assertThat(stats.active()).isEqualTo(2);
         assertThat(stats.trialing()).isEqualTo(1);
         assertThat(stats.mrrCad()).isEqualTo(Math.round((5 + 29 / 12.0) * 100) / 100.0);
+    }
+
+    @Test
+    void startPaymentMethodSetup_attachesCustomerId() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(payments.createSetupIntent(USER, "angler@example.com"))
+            .thenReturn(Optional.of(
+                new PaymentPort.SetupIntentResult("cus_123", "seti_secret_abc")));
+
+        Optional<PaymentPort.SetupIntentResult> intent = billing.startPaymentMethodSetup(USER);
+
+        assertThat(intent).isPresent();
+        assertThat(intent.get().clientSecret()).isEqualTo("seti_secret_abc");
+        assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
+    }
+
+    @Test
+    void applyEvent_paymentMethodAttached_setsDefaultOnPaymentPort() {
+        boolean handled = billing.applyEvent(new PaymentEvent(
+            "payment_method_attached", "cus_123", null, null, null, "pm_456"));
+
+        assertThat(handled).isTrue();
+        verify(payments).setDefaultPaymentMethod("cus_123", "pm_456");
     }
 
     @Test

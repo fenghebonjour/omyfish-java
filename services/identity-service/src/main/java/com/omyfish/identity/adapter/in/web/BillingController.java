@@ -61,6 +61,19 @@ public class BillingController {
         }
     }
 
+    @PostMapping("/payment-method/setup")
+    public Map<String, String> setupPaymentMethod(
+        @RequestHeader(value = "Authorization", required = false) String authHeader
+    ) {
+        UUID userId = requireUser(authHeader);
+        PaymentPort.SetupIntentResult intent = billing.startPaymentMethodSetup(userId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
+        return Map.of(
+            "clientSecret", intent.clientSecret(),
+            "customerId", intent.customerId());
+    }
+
     @PostMapping("/webhook")
     public Map<String, Boolean> webhook(
         @RequestBody String payload,

@@ -56,6 +56,20 @@ public class BillingService {
         return intent;
     }
 
+    /** Empty when Stripe is not configured. */
+    public Optional<PaymentPort.SetupIntentResult> startPaymentMethodSetup(UUID userId) {
+        User user = users.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        Optional<PaymentPort.SetupIntentResult> intent =
+            payments.createSetupIntent(userId, user.getEmail());
+        intent.ifPresent(i -> {
+            Subscription sub = startTrial(userId);
+            sub.attachStripeCustomerId(i.customerId());
+            subscriptions.save(sub);
+        });
+        return intent;
+    }
+
     public PaymentPort.RefundResult refund(UUID userId, Long amountCents) {
         Subscription sub = subscriptions.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
@@ -84,6 +98,10 @@ public class BillingService {
                         event.periodEnd(), null, event.subscriptionId());
                 }
                 subscriptions.save(sub);
+                return true;
+            }
+            case "payment_method_attached" -> {
+                payments.setDefaultPaymentMethod(event.customerId(), event.paymentMethodId());
                 return true;
             }
             default -> {

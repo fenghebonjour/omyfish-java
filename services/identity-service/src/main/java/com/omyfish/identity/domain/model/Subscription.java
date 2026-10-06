@@ -70,6 +70,12 @@ public class Subscription {
         this.updatedAt = Instant.now();
     }
 
+    /** Records the Stripe customer id alone, e.g. after tokenizing a payment method pre-checkout. */
+    public void attachStripeCustomerId(String stripeCustomerId) {
+        this.stripeCustomerId = stripeCustomerId;
+        this.updatedAt = Instant.now();
+    }
+
     public void cancel() {
         this.status = CANCELED;
         this.updatedAt = Instant.now();

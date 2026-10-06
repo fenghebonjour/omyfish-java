@@ -7,13 +7,16 @@ import com.stripe.model.Event;
 import com.stripe.model.Invoice;
 import com.stripe.model.InvoicePayment;
 import com.stripe.model.Refund;
+import com.stripe.model.SetupIntent;
 import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.CustomerListParams;
+import com.stripe.param.CustomerUpdateParams;
 import com.stripe.param.InvoicePaymentListParams;
 import com.stripe.param.RefundCreateParams;
+import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -79,6 +82,47 @@ public class StripePaymentAdapter implements PaymentPort {
                 subscription.getStatus()));
         } catch (Exception e) {
             throw new IllegalStateException("Stripe checkout failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Optional<SetupIntentResult> createSetupIntent(UUID userId, String email) {
+        if (secretKey.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            String customerId = findOrCreateCustomer(userId, email, options);
+
+            SetupIntentCreateParams params = SetupIntentCreateParams.builder()
+                .setCustomer(customerId)
+                .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
+                .build();
+            SetupIntent setupIntent = SetupIntent.create(params, options);
+
+            return Optional.of(new SetupIntentResult(customerId, setupIntent.getClientSecret()));
+        } catch (Exception e) {
+            throw new IllegalStateException("Stripe setup intent failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void setDefaultPaymentMethod(String customerId, String paymentMethodId) {
+        if (secretKey.isBlank()) {
+            return;
+        }
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            Customer.retrieve(customerId, options).update(
+                CustomerUpdateParams.builder()
+                    .setInvoiceSettings(CustomerUpdateParams.InvoiceSettings.builder()
+                        .setDefaultPaymentMethod(paymentMethodId)
+                        .build())
+                    .build(),
+                options);
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                "Stripe default payment method update failed: " + e.getMessage(), e);
         }
     }
 
@@ -161,7 +205,16 @@ public class StripePaymentAdapter implements PaymentPort {
                     event.getType().endsWith("deleted")
                         ? "subscription_deleted" : "subscription_updated",
                     sub.getCustomer(), sub.getId(), sub.getStatus(),
-                    periodEnd == null ? null : Instant.ofEpochSecond(periodEnd)));
+                    periodEnd == null ? null : Instant.ofEpochSecond(periodEnd),
+                    null));
+            }
+            case "setup_intent.succeeded" -> {
+                SetupIntent setupIntent = (SetupIntent) event.getDataObjectDeserializer()
+                    .getObject().orElse(null);
+                yield setupIntent == null ? Optional.empty() : Optional.of(new PaymentEvent(
+                    "payment_method_attached",
+                    setupIntent.getCustomer(), null, null, null,
+                    setupIntent.getPaymentMethod()));
             }
             default -> Optional.empty();
         };
