@@ -56,6 +56,17 @@ public class BillingService {
         return intent;
     }
 
+    public PaymentPort.RefundResult refund(UUID userId, Long amountCents) {
+        Subscription sub = subscriptions.findByUserId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
+        if (sub.getStripeSubscriptionId() == null) {
+            throw new IllegalArgumentException("No Stripe subscription on file");
+        }
+        return payments.refundSubscription(sub.getStripeSubscriptionId(), amountCents)
+            .orElseThrow(() -> new IllegalStateException(
+                "Stripe is not configured or there is nothing to refund"));
+    }
+
     public boolean applyEvent(PaymentEvent event) {
         switch (event.type()) {
             case "subscription_updated", "subscription_deleted" -> {

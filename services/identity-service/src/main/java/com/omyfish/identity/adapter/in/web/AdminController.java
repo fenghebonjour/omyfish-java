@@ -83,6 +83,27 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/subscriptions/{userId}/refund")
+    public Map<String, Object> refund(
+        @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @PathVariable UUID userId,
+        @RequestBody(required = false) RefundRequest request
+    ) {
+        requireAdmin(authHeader);
+        try {
+            var result = billing.refund(userId, request == null ? null : request.amountCents());
+            var map = new java.util.LinkedHashMap<String, Object>();
+            map.put("refundId", result.refundId());
+            map.put("status", result.status());
+            map.put("amountCents", result.amountCents());
+            return map;
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
+        }
+    }
+
     @PostMapping("/subscriptions/{userId}/extend-trial")
     public Map<String, Object> extendTrial(
         @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -107,4 +128,6 @@ public class AdminController {
     }
 
     record GrantRequest(Integer days, String plan) {}
+
+    record RefundRequest(Long amountCents) {}
 }

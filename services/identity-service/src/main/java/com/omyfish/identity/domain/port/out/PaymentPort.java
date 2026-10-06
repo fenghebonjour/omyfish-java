@@ -9,6 +9,9 @@ public interface PaymentPort {
 
     Optional<SubscriptionIntent> createSubscriptionIntent(UUID userId, String email, String plan);
 
+    /** Full refund when amountCents is null, partial otherwise. Empty if nothing to refund. */
+    Optional<RefundResult> refundSubscription(String stripeSubscriptionId, Long amountCents);
+
     /** Verifies the webhook signature and maps the event; empty if invalid/unconfigured. */
     Optional<PaymentEvent> verifyWebhook(String payload, String signature);
 
@@ -27,5 +30,11 @@ public interface PaymentPort {
         String subscriptionId,
         String clientSecret,
         String status
+    ) {}
+
+    record RefundResult(
+        String refundId,
+        String status,
+        Long amountCents
     ) {}
 }

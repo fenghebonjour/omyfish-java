@@ -5,11 +5,15 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Customer;
 import com.stripe.model.Event;
 import com.stripe.model.Invoice;
+import com.stripe.model.InvoicePayment;
+import com.stripe.model.Refund;
 import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
 import com.stripe.param.CustomerListParams;
+import com.stripe.param.InvoicePaymentListParams;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -93,6 +97,44 @@ public class StripePaymentAdapter implements PaymentPort {
                 .build(),
             options);
         return created.getId();
+    }
+
+    @Override
+    public Optional<RefundResult> refundSubscription(String stripeSubscriptionId, Long amountCents) {
+        if (secretKey.isBlank() || stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            Subscription subscription = Subscription.retrieve(stripeSubscriptionId, options);
+            String invoiceId = subscription.getLatestInvoice();
+            if (invoiceId == null) {
+                return Optional.empty();
+            }
+
+            InvoicePayment payment = InvoicePayment.list(
+                InvoicePaymentListParams.builder()
+                    .setInvoice(invoiceId)
+                    .setStatus(InvoicePaymentListParams.Status.PAID)
+                    .setLimit(1L)
+                    .build(),
+                options)
+                .getData().stream().findFirst().orElse(null);
+            String paymentIntentId = payment == null ? null : payment.getPayment().getPaymentIntent();
+            if (paymentIntentId == null) {
+                return Optional.empty();
+            }
+
+            RefundCreateParams.Builder params = RefundCreateParams.builder()
+                .setPaymentIntent(paymentIntentId);
+            if (amountCents != null) {
+                params.setAmount(amountCents);
+            }
+            Refund refund = Refund.create(params.build(), options);
+            return Optional.of(new RefundResult(refund.getId(), refund.getStatus(), amountCents));
+        } catch (Exception e) {
+            throw new IllegalStateException("Stripe refund failed: " + e.getMessage(), e);
+        }
     }
 
     @Override

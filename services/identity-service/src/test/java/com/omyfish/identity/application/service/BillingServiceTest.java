@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -131,6 +132,37 @@ class BillingServiceTest {
         assertThat(stats.active()).isEqualTo(2);
         assertThat(stats.trialing()).isEqualTo(1);
         assertThat(stats.mrrCad()).isEqualTo(Math.round((5 + 29 / 12.0) * 100) / 100.0);
+    }
+
+    @Test
+    void refund_delegatesToPaymentPort() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachStripeIds("cus_123", "sub_456");
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(payments.refundSubscription("sub_456", 500L))
+            .thenReturn(Optional.of(new PaymentPort.RefundResult("re_1", "succeeded", 500L)));
+
+        PaymentPort.RefundResult result = billing.refund(USER, 500L);
+
+        assertThat(result.refundId()).isEqualTo("re_1");
+        assertThat(result.amountCents()).isEqualTo(500L);
+    }
+
+    @Test
+    void refund_noSubscription_throws() {
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> billing.refund(USER, null))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void refund_noStripeSubscriptionId_throws() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+
+        assertThatThrownBy(() -> billing.refund(USER, null))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
