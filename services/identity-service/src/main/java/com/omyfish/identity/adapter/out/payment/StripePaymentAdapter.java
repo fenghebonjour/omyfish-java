@@ -212,6 +212,7 @@ public class StripePaymentAdapter implements PaymentPort {
                     && !sub.getItems().getData().isEmpty()
                     ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
                 yield Optional.of(new PaymentEvent(
+                    event.getId(),
                     event.getType().endsWith("deleted")
                         ? "subscription_deleted" : "subscription_updated",
                     sub.getCustomer(), sub.getId(), sub.getStatus(),
@@ -222,6 +223,7 @@ public class StripePaymentAdapter implements PaymentPort {
                 SetupIntent setupIntent = (SetupIntent) event.getDataObjectDeserializer()
                     .getObject().orElse(null);
                 yield setupIntent == null ? Optional.empty() : Optional.of(new PaymentEvent(
+                    event.getId(),
                     "payment_method_attached",
                     setupIntent.getCustomer(), null, null, null,
                     setupIntent.getPaymentMethod()));

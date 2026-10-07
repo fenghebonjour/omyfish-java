@@ -1,12 +1,14 @@
 package com.omyfish.identity.application.service;
 
 import com.omyfish.identity.domain.model.IdempotencyRecord;
+import com.omyfish.identity.domain.model.ProcessedWebhookEvent;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.model.User;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.IdempotencyKeyRepository;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
+import com.omyfish.identity.domain.port.out.ProcessedWebhookEventRepository;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.UserRepository;
 
@@ -26,13 +28,16 @@ public class BillingService {
     private final UserRepository users;
     private final PaymentPort payments;
     private final IdempotencyKeyRepository idempotencyKeys;
+    private final ProcessedWebhookEventRepository processedWebhookEvents;
 
     public BillingService(SubscriptionRepository subscriptions, UserRepository users,
-                          PaymentPort payments, IdempotencyKeyRepository idempotencyKeys) {
+                          PaymentPort payments, IdempotencyKeyRepository idempotencyKeys,
+                          ProcessedWebhookEventRepository processedWebhookEvents) {
         this.subscriptions = subscriptions;
         this.users = users;
         this.payments = payments;
         this.idempotencyKeys = idempotencyKeys;
+        this.processedWebhookEvents = processedWebhookEvents;
     }
 
     public Subscription startTrial(UUID userId) {
@@ -152,6 +157,17 @@ public class BillingService {
     }
 
     public boolean applyEvent(PaymentEvent event) {
+        if (event.eventId() != null && processedWebhookEvents.existsById(event.eventId())) {
+            return true;
+        }
+        boolean handled = applyEventEffects(event);
+        if (handled && event.eventId() != null) {
+            processedWebhookEvents.save(ProcessedWebhookEvent.of(event.eventId()));
+        }
+        return handled;
+    }
+
+    private boolean applyEventEffects(PaymentEvent event) {
         switch (event.type()) {
             case "subscription_updated", "subscription_deleted" -> {
                 Optional<Subscription> found =

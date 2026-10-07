@@ -417,6 +417,21 @@ guessing; findings below are real gaps, not assumed ones. Ordered MVP-first
    but that's incidental, not designed. Add the event id to `PaymentEvent`
    and a `processed_webhook_events` table checked before `applyEvent()`
    runs.
+   **Done (2026-10-06, uncommitted):** `PaymentEvent` now carries Stripe's
+   `event.getId()` (`StripePaymentAdapter.verifyWebhook`); a new
+   `identity.processed_webhook_events` table
+   (`V5__add_processed_webhook_events.sql`, `ProcessedWebhookEvent` entity
+   behind a `ProcessedWebhookEventRepository` port) is checked at the top
+   of `applyEvent()` — a known event id short-circuits to `true` (ack,
+   nothing to redo) without touching `subscriptions`/`payments` again; the
+   original switch logic moved unchanged into a private
+   `applyEventEffects()`, recorded as processed only when it actually
+   handled something (the `default` no-op case for untracked event types
+   still isn't recorded — nothing to dedup there). Verified via 2 new
+   `BillingServiceTest` cases (duplicate id skips reprocessing entirely;
+   an unhandled event type still isn't recorded) plus existing event tests
+   updated to assert the id *is* recorded on the handled path — full
+   `mvn test -pl services/identity-service -am` green (39 tests).
 3. **Crash-after-Stripe-call-before-save is unrecovered.** In
    `startCheckout`/`startPaymentMethodSetup`, if the process dies between
    the Stripe call succeeding and `subscriptions.save(sub)` persisting the

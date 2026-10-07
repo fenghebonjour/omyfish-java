@@ -26,6 +26,7 @@ public interface PaymentPort {
     boolean isConfigured();
 
     record PaymentEvent(
+        String eventId,          // Stripe's event id, used to dedup redelivered webhooks
         String type,             // subscription_updated | subscription_deleted | payment_method_attached
         String customerId,
         String subscriptionId,

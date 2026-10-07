@@ -6,6 +6,7 @@ import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.IdempotencyKeyRepository;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
+import com.omyfish.identity.domain.port.out.ProcessedWebhookEventRepository;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ class BillingServiceTest {
     @Mock UserRepository users;
     @Mock PaymentPort payments;
     @Mock IdempotencyKeyRepository idempotencyKeys;
+    @Mock ProcessedWebhookEventRepository processedWebhookEvents;
     @InjectMocks BillingService billing;
 
     private static final UUID USER = UUID.randomUUID();
@@ -146,10 +148,11 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null, null));
+            "evt_1", "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
+        verify(processedWebhookEvents).save(any());
     }
 
     @Test
@@ -160,10 +163,11 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "subscription_deleted", "cus_123", "sub_456", null, null, null));
+            "evt_2", "subscription_deleted", "cus_123", "sub_456", null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
+        verify(processedWebhookEvents).save(any());
     }
 
     @Test
@@ -175,7 +179,7 @@ class BillingServiceTest {
         Instant periodEnd = Instant.now().plusSeconds(30 * 86400);
 
         billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null));
+            "evt_3", "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
@@ -186,7 +190,8 @@ class BillingServiceTest {
         when(subscriptions.findByStripeCustomerId("cus_ghost")).thenReturn(Optional.empty());
 
         assertThat(billing.applyEvent(new PaymentEvent(
-            "subscription_updated", "cus_ghost", null, "active", null, null))).isFalse();
+            "evt_4", "subscription_updated", "cus_ghost", null, "active", null, null))).isFalse();
+        verify(processedWebhookEvents, never()).save(any());
     }
 
     @Test
@@ -227,10 +232,23 @@ class BillingServiceTest {
     @Test
     void applyEvent_paymentMethodAttached_setsDefaultOnPaymentPort() {
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "payment_method_attached", "cus_123", null, null, null, "pm_456"));
+            "evt_5", "payment_method_attached", "cus_123", null, null, null, "pm_456"));
 
         assertThat(handled).isTrue();
         verify(payments).setDefaultPaymentMethod("cus_123", "pm_456");
+        verify(processedWebhookEvents).save(any());
+    }
+
+    @Test
+    void applyEvent_duplicateEventId_skipsReprocessing() {
+        when(processedWebhookEvents.existsById("evt_dup")).thenReturn(true);
+
+        boolean handled = billing.applyEvent(new PaymentEvent(
+            "evt_dup", "payment_method_attached", "cus_123", null, null, null, "pm_456"));
+
+        assertThat(handled).isTrue();
+        verifyNoInteractions(payments);
+        verify(processedWebhookEvents, never()).save(any());
     }
 
     @Test

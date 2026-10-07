@@ -3,6 +3,7 @@ package com.omyfish.identity.config;
 import com.omyfish.identity.adapter.out.payment.StripePaymentAdapter;
 import com.omyfish.identity.adapter.out.persistence.ApiKeyRepositoryAdapter;
 import com.omyfish.identity.adapter.out.persistence.IdempotencyKeyRepositoryAdapter;
+import com.omyfish.identity.adapter.out.persistence.ProcessedWebhookEventRepositoryAdapter;
 import com.omyfish.identity.adapter.out.persistence.SubscriptionRepositoryAdapter;
 import com.omyfish.identity.adapter.out.persistence.UserRepositoryAdapter;
 import com.omyfish.identity.adapter.out.security.JwtTokenAdapter;
@@ -96,9 +97,11 @@ public class AppConfig {
         SubscriptionRepositoryAdapter subscriptionRepository,
         UserRepositoryAdapter userRepository,
         StripePaymentAdapter paymentPort,
-        IdempotencyKeyRepositoryAdapter idempotencyKeyRepository
+        IdempotencyKeyRepositoryAdapter idempotencyKeyRepository,
+        ProcessedWebhookEventRepositoryAdapter processedWebhookEventRepository
     ) {
         return new BillingService(
-            subscriptionRepository, userRepository, paymentPort, idempotencyKeyRepository);
+            subscriptionRepository, userRepository, paymentPort, idempotencyKeyRepository,
+            processedWebhookEventRepository);
     }
 }
