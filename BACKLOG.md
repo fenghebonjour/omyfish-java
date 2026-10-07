@@ -487,3 +487,28 @@ and needs no change.
      environment to verify against, and mocking their HTTP responses
      without ever having seen a real one would give false confidence. Add
      these once real PayPal/Adyen sandbox credentials are available.
+
+7. **Broadening Stripe to Apple Pay/WeChat Pay investigated (2026-10-07) —
+   Apple Pay needs no backend change, WeChat Pay was skipped.** Checked
+   before writing any code, since both looked at first like a one-line
+   `payment_method_types` change:
+   - **Apple Pay: nothing to do here.** Stripe resolves an Apple Pay
+     confirmation to an ordinary `type: card` payment method, so it already
+     rides the same `Subscription.create(..., DEFAULT_INCOMPLETE)` path as
+     any other card via Stripe's dynamic payment methods — no
+     `StripePaymentAdapter` change. What's left is domain verification (the
+     Apple Pay domain-association file hosted on the frontend's domain) and
+     registering that domain in the Stripe Dashboard — `omyfish-frontend`/
+     `omyfish-frontend-angular` territory, not this repo.
+   - **WeChat Pay: skipped, not a fit for this billing model.** Two hard
+     Stripe-side constraints rule it out as-is: it requires an explicit
+     `payment_method_options.wechat_pay.client` (never auto-offered like
+     Apple Pay), and it's excluded from `setup_future_usage` — Stripe's own
+     support table lists it as incompatible with being stored for
+     off-session/recurring reuse. `startCheckout` creates a `Subscription`
+     directly (recurring by construction), so a WeChat Pay–originated
+     checkout would work for exactly one period and then silently fail to
+     renew — the same shape of gap already called out for Adyen above. If
+     WeChat Pay is wanted later, it'd need a genuinely separate one-time
+     top-up flow (new use case, new endpoint), not a bolt-on to subscription
+     checkout.
