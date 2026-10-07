@@ -32,6 +32,13 @@ import java.util.UUID;
 @Component
 public class StripePaymentAdapter implements PaymentPort {
 
+    // Same timeout discipline as AIServiceAdapter's WebClient fix (WEAKNESS_AUDIT.md §2.1) — a
+    // slow (not down) Stripe must not hang a request indefinitely. No retries added: a failed
+    // charge/subscription-create must never be retried without an idempotency key in place
+    // (BACKLOG item I.1, already done), so retrying here would risk a double-charge.
+    private static final int CONNECT_TIMEOUT_MS = 10_000;
+    private static final int READ_TIMEOUT_MS = 15_000;
+
     private final String secretKey;
     private final String webhookSecret;
     private final Map<String, String> priceIds;
@@ -57,6 +64,13 @@ public class StripePaymentAdapter implements PaymentPort {
         return !secretKey.isBlank();
     }
 
+    private RequestOptions.RequestOptionsBuilder baseOptions() {
+        return RequestOptions.builder()
+            .setApiKey(secretKey)
+            .setConnectTimeout(CONNECT_TIMEOUT_MS)
+            .setReadTimeout(READ_TIMEOUT_MS);
+    }
+
     @Override
     public Optional<SubscriptionIntent> createSubscriptionIntent(
         UUID userId, String email, String plan, String idempotencyKey
@@ -66,11 +80,10 @@ public class StripePaymentAdapter implements PaymentPort {
             return Optional.empty();
         }
         try {
-            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            RequestOptions options = baseOptions().build();
             String customerId = findOrCreateCustomer(userId, email, options);
 
-            RequestOptions createOptions = RequestOptions.builder()
-                .setApiKey(secretKey)
+            RequestOptions createOptions = baseOptions()
                 .setIdempotencyKey(idempotencyKey)
                 .build();
             SubscriptionCreateParams params = SubscriptionCreateParams.builder()
@@ -103,7 +116,7 @@ public class StripePaymentAdapter implements PaymentPort {
             return Optional.empty();
         }
         try {
-            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            RequestOptions options = baseOptions().build();
             String customerId = findOrCreateCustomer(userId, email, options);
 
             SetupIntentCreateParams params = SetupIntentCreateParams.builder()
@@ -124,7 +137,7 @@ public class StripePaymentAdapter implements PaymentPort {
             return;
         }
         try {
-            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            RequestOptions options = baseOptions().build();
             Customer.retrieve(customerId, options).update(
                 CustomerUpdateParams.builder()
                     .setInvoiceSettings(CustomerUpdateParams.InvoiceSettings.builder()
@@ -165,7 +178,7 @@ public class StripePaymentAdapter implements PaymentPort {
             return Optional.empty();
         }
         try {
-            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            RequestOptions options = baseOptions().build();
             Subscription subscription = Subscription.retrieve(stripeSubscriptionId, options);
             String invoiceId = subscription.getLatestInvoice();
             if (invoiceId == null) {
@@ -190,8 +203,7 @@ public class StripePaymentAdapter implements PaymentPort {
             if (amountCents != null) {
                 params.setAmount(amountCents);
             }
-            RequestOptions refundOptions = RequestOptions.builder()
-                .setApiKey(secretKey)
+            RequestOptions refundOptions = baseOptions()
                 .setIdempotencyKey(idempotencyKey)
                 .build();
             Refund refund = Refund.create(params.build(), refundOptions);
@@ -207,7 +219,7 @@ public class StripePaymentAdapter implements PaymentPort {
             return List.of();
         }
         try {
-            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            RequestOptions options = baseOptions().build();
             SubscriptionListParams params = SubscriptionListParams.builder()
                 .setCreated(SubscriptionListParams.Created.builder()
                     .setGte(since.getEpochSecond())

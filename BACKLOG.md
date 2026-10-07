@@ -363,9 +363,14 @@ a prior backlog entry — this was new scope, not a ported/audited item.
 
 ---
 
-## [ ] I — Payment module hardening (idempotency, reconciliation, resilience)
+## [x] I — Payment module hardening (idempotency, reconciliation, resilience)
 
-**Status:** IN PROGRESS (2026-10-06). Prompted by mapping item H's billing module
+**Status:** DONE for the original 5-item MVP checklist (2026-10-06 through 2026-10-07).
+Multi-acquirer support (item 6) and the Apple Pay/WeChat Pay investigation (item 7) were
+separate, later additions layered onto this same entry — item 6 still carries its own two
+documented open gaps (Adyen recurring-charge scheduler, adapter-level PayPal/Adyen tests), so
+this backlog entry isn't fully closed, just the ordered MVP scope below is. Prompted by mapping
+item H's billing module
 against standard payment-interview architecture questions (industry MVP
 checklist: idempotency, state machine, retries, reconciliation, provider
 abstraction, PCI scope, observability — see `docs/PAYMENT_QUESTIONS.md`,
@@ -485,11 +490,34 @@ guessing; findings below are real gaps, not assumed ones. Ordered MVP-first
    bank's own framing, a failed charge/subscription-create must never be
    retried without the idempotency key from item 1 in place first, so this
    task is sequenced after item 1.
+   **Done (2026-10-07):** new private `baseOptions()` helper
+   (`RequestOptions.builder().setApiKey(secretKey).setConnectTimeout(10_000)
+   .setReadTimeout(15_000)`) replaces all 7 ad hoc `RequestOptions.builder()
+   .setApiKey(secretKey)` call sites across the adapter (checkout, setup
+   intent, default-payment-method update, refund, and the new item-3
+   subscription listing) — same 10s connect / 15s read values as
+   `AIServiceAdapter`'s `WebClient`, confirmed against the actual
+   `stripe-java:29.0.0` jar on the classpath (`RequestOptionsBuilder
+   .setConnectTimeout(Integer)`/`.setReadTimeout(Integer)`, not assumed).
+   Still no retries, per this item's own instruction. Verified via full
+   `mvn test -pl services/identity-service -am` (54 tests, unchanged —
+   this is a pure call-site consolidation, nothing to newly assert beyond
+   what already passes).
 5. **Billing endpoints aren't rate-limited.** `RateLimitFilter` (added in
    item G, §1.2) only covers `/api/v1/species/**`. `/billing/checkout` and
    `/billing/payment-method/setup` call out to Stripe and are
    user-authenticated but still abusable; add them to the same filter's
    covered prefixes.
+   **Done (2026-10-07):** both exact paths (not a prefix — `/billing/
+   webhook/{processor}` must stay unthrottled, since that's Stripe/PayPal/
+   Adyen calling us, not a user) now share one `billingWindows` map at
+   5/min per IP — tighter than identify's 10/min or bite-score's 30/min,
+   since no legitimate checkout flow calls either endpoint more than a
+   couple of times a minute. Verified via 3 new `RateLimitFilterTest`
+   cases (6th checkout request from the same IP rejected; payment-method/
+   setup shares that same per-IP window as checkout; the webhook path
+   stays unthrottled even at 50 requests) — full `mvn test -pl
+   services/api-gateway -am` green (14 tests).
 
 **Explicitly not doing (documented so it isn't re-proposed):** a local
 payment-event audit ledger table independent of Stripe's own dashboard/API —

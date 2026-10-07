@@ -13,11 +13,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Per-IP fixed-window rate limiting on {@code /api/v1/species/identify} and
- * {@code /api/v1/species/bite-score/**} — both are public routes (see {@link AuthFilter}) that
- * drive cost on the external AI service, so without a limit here they were open to unbounded
- * free usage (BACKLOG.md item G, WEAKNESS_AUDIT.md §1.2, matching omyfish-dotnet's identical
- * identify/bite-score rate limits: 10/min and 30/min).
+ * Per-IP fixed-window rate limiting on {@code /api/v1/species/identify},
+ * {@code /api/v1/species/bite-score/**}, and the billing endpoints that call out to a payment
+ * processor. The species endpoints are public routes (see {@link AuthFilter}) that drive cost on
+ * the external AI service; the billing endpoints are user-authenticated but still abusable
+ * against Stripe/PayPal/Adyen, and legitimate use never needs more than a handful of attempts a
+ * minute (BACKLOG.md item G §1.2 for species, item I.5 for billing — matching omyfish-dotnet's
+ * identical identify/bite-score rate limits: 10/min and 30/min).
  *
  * <p>In-memory rather than Spring Cloud Gateway's Redis-backed {@code RequestRateLimiter} —
  * api-gateway runs as a single instance in this stack and no Redis exists here yet; revisit if
@@ -28,10 +30,12 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
     private static final int IDENTIFY_LIMIT_PER_MINUTE = 10;
     private static final int BITE_SCORE_LIMIT_PER_MINUTE = 30;
+    private static final int BILLING_LIMIT_PER_MINUTE = 5;
     private static final long WINDOW_MILLIS = 60_000;
 
     private final ConcurrentHashMap<String, Window> identifyWindows = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Window> biteScoreWindows = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Window> billingWindows = new ConcurrentHashMap<>();
 
     private record Window(long windowStart, AtomicInteger count) {
     }
@@ -48,6 +52,10 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         } else if (path.startsWith("/api/v1/species/bite-score")) {
             windows = biteScoreWindows;
             limit = BITE_SCORE_LIMIT_PER_MINUTE;
+        } else if (path.equals("/api/v1/billing/checkout")
+            || path.equals("/api/v1/billing/payment-method/setup")) {
+            windows = billingWindows;
+            limit = BILLING_LIMIT_PER_MINUTE;
         } else {
             return chain.filter(exchange);
         }

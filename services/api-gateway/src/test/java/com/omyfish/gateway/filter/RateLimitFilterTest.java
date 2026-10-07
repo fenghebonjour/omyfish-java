@@ -64,6 +64,46 @@ class RateLimitFilterTest {
     }
 
     @Test
+    void billingCheckout_sixthRequestFromSameIpRejected() {
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        for (int i = 0; i < 5; i++) {
+            filter.filter(exchangeFor("/api/v1/billing/checkout", "6.6.6.6"), chain).block();
+        }
+
+        ServerWebExchange sixth = exchangeFor("/api/v1/billing/checkout", "6.6.6.6");
+        filter.filter(sixth, chain).block();
+
+        assertThat(sixth.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        verify(chain, times(5)).filter(any());
+    }
+
+    @Test
+    void billingPaymentMethodSetup_sharesTheCheckoutLimitForTheSameIp() {
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        for (int i = 0; i < 5; i++) {
+            filter.filter(exchangeFor("/api/v1/billing/checkout", "7.7.7.7"), chain).block();
+        }
+
+        ServerWebExchange setupAttempt = exchangeFor("/api/v1/billing/payment-method/setup", "7.7.7.7");
+        filter.filter(setupAttempt, chain).block();
+
+        assertThat(setupAttempt.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @Test
+    void billingWebhook_isNotRateLimited() {
+        when(chain.filter(any())).thenReturn(Mono.empty());
+
+        for (int i = 0; i < 50; i++) {
+            filter.filter(exchangeFor("/api/v1/billing/webhook/stripe", "8.8.8.8"), chain).block();
+        }
+
+        verify(chain, times(50)).filter(any());
+    }
+
+    @Test
     void identify_limitIsPerIp_secondIpUnaffectedBySaturatedFirstIp() {
         when(chain.filter(any())).thenReturn(Mono.empty());
 
