@@ -18,10 +18,12 @@ import com.stripe.param.InvoicePaymentListParams;
 import com.stripe.param.RefundCreateParams;
 import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
+import com.stripe.param.SubscriptionListParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -196,6 +198,42 @@ public class StripePaymentAdapter implements PaymentPort {
             return Optional.of(new RefundResult(refund.getId(), refund.getStatus(), amountCents));
         } catch (Exception e) {
             throw new IllegalStateException("Stripe refund failed: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<ReconciliationCandidate> listRecentSubscriptions(Instant since) {
+        if (secretKey.isBlank()) {
+            return List.of();
+        }
+        try {
+            RequestOptions options = RequestOptions.builder().setApiKey(secretKey).build();
+            SubscriptionListParams params = SubscriptionListParams.builder()
+                .setCreated(SubscriptionListParams.Created.builder()
+                    .setGte(since.getEpochSecond())
+                    .build())
+                .setLimit(100L)
+                .build();
+            List<ReconciliationCandidate> candidates = new ArrayList<>();
+            for (Subscription sub : Subscription.list(params, options).autoPagingIterable()) {
+                Map<String, String> metadata = sub.getMetadata();
+                String userIdStr = metadata == null ? null : metadata.get("user_id");
+                UUID userId;
+                try {
+                    userId = userIdStr == null ? null : UUID.fromString(userIdStr);
+                } catch (IllegalArgumentException e) {
+                    userId = null;
+                }
+                Long periodEndEpoch = sub.getItems() != null && !sub.getItems().getData().isEmpty()
+                    ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
+                candidates.add(new ReconciliationCandidate(
+                    name(), userId, sub.getCustomer(), sub.getId(),
+                    metadata == null ? null : metadata.get("plan"), sub.getStatus(),
+                    periodEndEpoch == null ? null : Instant.ofEpochSecond(periodEndEpoch)));
+            }
+            return candidates;
+        } catch (Exception e) {
+            throw new IllegalStateException("Stripe subscription listing failed: " + e.getMessage(), e);
         }
     }
 

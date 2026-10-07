@@ -1,6 +1,7 @@
 package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.application.service.BillingService;
+import com.omyfish.identity.application.service.ReconciliationService;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,12 +21,14 @@ import java.util.UUID;
 public class AdminController {
 
     private final BillingService billing;
+    private final ReconciliationService reconciliation;
     private final UserRepository users;
     private final GetCurrentUserUseCase currentUser;
 
-    public AdminController(BillingService billing, UserRepository users,
-                           GetCurrentUserUseCase currentUser) {
+    public AdminController(BillingService billing, ReconciliationService reconciliation,
+                           UserRepository users, GetCurrentUserUseCase currentUser) {
         this.billing = billing;
+        this.reconciliation = reconciliation;
         this.users = users;
         this.currentUser = currentUser;
     }
@@ -118,6 +122,15 @@ public class AdminController {
         requireAdmin(authHeader);
         return row(billing.extendTrial(userId,
             request != null && request.days() != null ? request.days() : 7));
+    }
+
+    @PostMapping("/subscriptions/reconcile")
+    public ReconciliationService.ReconciliationResult reconcile(
+        @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @RequestParam(defaultValue = "24") long lookbackHours
+    ) {
+        requireAdmin(authHeader);
+        return reconciliation.reconcile(Instant.now().minus(lookbackHours, ChronoUnit.HOURS));
     }
 
     private Map<String, Object> row(Subscription s) {

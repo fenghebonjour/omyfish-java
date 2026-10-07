@@ -1,6 +1,7 @@
 package com.omyfish.identity.domain.port.out;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +38,24 @@ public interface PaymentPort {
     Optional<PaymentEvent> verifyWebhook(String payload, Map<String, String> headers);
 
     boolean isConfigured();
+
+    /**
+     * Subscriptions this processor created on/after `since` — used by reconciliation to repair
+     * a local row whose processor-id link never got saved (e.g. a crash between the processor
+     * call succeeding and subscriptions.save()). Not every processor supports this; one that
+     * doesn't (or isn't live yet) returns an empty list rather than throwing.
+     */
+    List<ReconciliationCandidate> listRecentSubscriptions(Instant since);
+
+    record ReconciliationCandidate(
+        String processor,
+        UUID userId,            // null if the processor-side metadata is missing/unparseable
+        String customerId,
+        String subscriptionId,
+        String plan,
+        String providerStatus,
+        Instant periodEnd
+    ) {}
 
     record PaymentEvent(
         String eventId,          // provider's event id, used to dedup redelivered webhooks

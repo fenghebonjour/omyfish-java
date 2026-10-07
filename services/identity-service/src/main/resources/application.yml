@@ -57,6 +57,13 @@ adyen:
   price-yearly-cents: ${ADYEN_PRICE_YEARLY_CENTS:2900}
   return-url: ${ADYEN_RETURN_URL:}
 
+# Scheduled repair for BACKLOG item I.3 (a crash between a processor call succeeding and the
+# local save persisting its id). Same work is also available on demand via
+# POST /api/v1/admin/subscriptions/reconcile.
+reconciliation:
+  interval-ms: ${RECONCILIATION_INTERVAL_MS:1800000}   # 30 min
+  lookback-hours: ${RECONCILIATION_LOOKBACK_HOURS:24}
+
 management:
   endpoints:
     web:

@@ -12,6 +12,7 @@ import com.omyfish.identity.adapter.out.security.JwtTokenAdapter;
 import com.omyfish.identity.application.service.AuthService;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.application.service.PaymentProcessorRegistry;
+import com.omyfish.identity.application.service.ReconciliationService;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
@@ -119,5 +120,14 @@ public class AppConfig {
         return new BillingService(
             subscriptionRepository, userRepository, paymentProcessorRegistry, idempotencyKeyRepository,
             processedWebhookEventRepository);
+    }
+
+    @Bean
+    public ReconciliationService reconciliationService(
+        PaymentProcessorRegistry paymentProcessorRegistry,
+        SubscriptionRepositoryAdapter subscriptionRepository,
+        BillingService billingService
+    ) {
+        return new ReconciliationService(paymentProcessorRegistry, subscriptionRepository, billingService);
     }
 }

@@ -31,6 +31,11 @@ public class PaymentProcessorRegistry {
         return findByName(name).isPresent();
     }
 
+    /** Every processor that's actually usable right now, in priority order. */
+    public List<PaymentPort> configured() {
+        return processors.stream().filter(PaymentPort::isConfigured).toList();
+    }
+
     /** Looks up a processor by name. Throws if it's unknown or not configured — a corrupt-state case. */
     public PaymentPort byName(String name) {
         return findByName(name)

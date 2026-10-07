@@ -442,6 +442,41 @@ guessing; findings below are real gaps, not assumed ones. Ordered MVP-first
    recent Stripe subscriptions for customers missing/mismatched locally and
    repairs the link — the standard "webhooks aren't enough, you still need
    a reconciliation job" answer from the question bank, made concrete here.
+   **Done (2026-10-07):** driven from each configured processor's own
+   subscription list rather than scanning local rows for a missing link
+   (a null link is also just the normal state for any trialing user who
+   hasn't subscribed yet, so it can't signal "broken" on its own) — every
+   Stripe subscription already carries `user_id`/`plan` metadata
+   (`StripePaymentAdapter.createSubscriptionIntent`), so reconciliation
+   reads that back via a new `PaymentPort.listRecentSubscriptions(Instant)`
+   (`PaymentPort.ReconciliationCandidate`; PayPal/Adyen return an empty
+   list — not live yet, same as their other documented gaps in item 6
+   below), repairs the local link if it's missing/mismatched, then replays
+   the candidate through the already-tested `BillingService.applyEvent`
+   path (synthetic `PaymentEvent` with `eventId=null` so the dedup check is
+   skipped) to resync status/periodEnd too — a bonus beyond the strict
+   link-repair scope, at near-zero extra cost since that data's already in
+   hand. New `ReconciliationService` (`application/service/`) is called
+   from both a scheduled `ReconciliationJob` (`adapter/out/scheduling/`,
+   `@Scheduled`, 30 min default, mirroring observation-service's
+   `OutboxPublisherJob` — same single-instance-replica caveat, lower-stakes
+   here since reconciling is idempotent) and on demand via
+   `POST /api/v1/admin/subscriptions/reconcile?lookbackHours=24`
+   (`AdminController`, same `requireAdmin` convention as its siblings).
+   `IdentityServiceApplication` gained `@EnableScheduling` (confirmed
+   absent before this). Verified against the actual `stripe-java:29.0.0`
+   jar on the classpath (not assumed) for the exact
+   `Subscription.list`/`SubscriptionListParams.Created`/`autoPagingIterable`
+   API shape. Verified via 5 new `ReconciliationServiceTest` cases
+   (mismatched link repaired + resynced, already-linked skips the repair
+   but still resyncs, missing-metadata candidate recorded as an error and
+   skipped, one processor failing doesn't stop the others, no local row
+   yet gets one created) + a `PaymentProcessorRegistryTest` case for the
+   new `configured()` method — full `mvn test -pl services/identity-service
+   -am` green (54 tests). No adapter-level test added for the new Stripe
+   SDK call or a controller-level test for the new admin endpoint — neither
+   has any existing precedent in this module to extend (no test anywhere
+   mocks a Stripe SDK call directly, no `AdminControllerTest` file exists).
 4. **No timeout/retry policy on Stripe SDK calls.** `StripePaymentAdapter`
    builds `RequestOptions` with just an API key; no connect/read timeout,
    no retry-with-backoff. Mirror the pattern already used for the AI

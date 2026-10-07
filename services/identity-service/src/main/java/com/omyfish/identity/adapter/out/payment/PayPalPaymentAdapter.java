@@ -169,6 +169,12 @@ public class PayPalPaymentAdapter implements PaymentPort {
     }
 
     @Override
+    public List<ReconciliationCandidate> listRecentSubscriptions(Instant since) {
+        // Not implemented: PayPal isn't live yet (BACKLOG I.6) — add this once it is.
+        return List.of();
+    }
+
+    @Override
     public Optional<RefundResult> refundSubscription(
         String subscriptionId, String lastPaymentReference, Long amountCents, String idempotencyKey
     ) {

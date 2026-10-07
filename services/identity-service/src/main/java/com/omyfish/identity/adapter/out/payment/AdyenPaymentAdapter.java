@@ -19,6 +19,7 @@ import com.omyfish.identity.domain.port.out.PaymentPort;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -169,6 +170,15 @@ public class AdyenPaymentAdapter implements PaymentPort {
     public void setDefaultPaymentMethod(String customerId, String paymentMethodId) {
         // No-op: Adyen has no customer-level "default payment method" pointer, and this
         // design's webhook mapping never emits payment_method_attached for Adyen anyway.
+    }
+
+    @Override
+    public List<ReconciliationCandidate> listRecentSubscriptions(Instant since) {
+        // Not implemented: Adyen isn't live yet (BACKLOG I.6) — add this once it is. It would
+        // also need Adyen's own notion of "recent" (it has no subscription object to list;
+        // this would have to query captured payments by shopperReference/merchantReference
+        // instead).
+        return List.of();
     }
 
     @Override

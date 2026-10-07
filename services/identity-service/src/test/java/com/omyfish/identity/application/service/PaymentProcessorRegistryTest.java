@@ -79,4 +79,14 @@ class PaymentProcessorRegistryTest {
         assertThat(registry.exists("stripe")).isTrue();
         assertThat(registry.exists("adyen")).isFalse();
     }
+
+    @Test
+    void configured_returnsOnlyThoseActuallyUsable() {
+        names();
+        when(stripe.isConfigured()).thenReturn(true);
+        when(paypal.isConfigured()).thenReturn(false);
+        PaymentProcessorRegistry registry = new PaymentProcessorRegistry(List.of(stripe, paypal), "stripe");
+
+        assertThat(registry.configured()).containsExactly(stripe);
+    }
 }
