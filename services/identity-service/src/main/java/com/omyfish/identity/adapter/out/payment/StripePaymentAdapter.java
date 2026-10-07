@@ -46,6 +46,11 @@ public class StripePaymentAdapter implements PaymentPort {
     }
 
     @Override
+    public String name() {
+        return "stripe";
+    }
+
+    @Override
     public boolean isConfigured() {
         return !secretKey.isBlank();
     }
@@ -80,6 +85,7 @@ public class StripePaymentAdapter implements PaymentPort {
             String clientSecret = invoice == null || invoice.getConfirmationSecret() == null
                 ? null : invoice.getConfirmationSecret().getClientSecret();
             return Optional.of(new SubscriptionIntent(
+                name(),
                 subscription.getCustomer(),
                 subscription.getId(),
                 clientSecret,
@@ -104,7 +110,7 @@ public class StripePaymentAdapter implements PaymentPort {
                 .build();
             SetupIntent setupIntent = SetupIntent.create(params, options);
 
-            return Optional.of(new SetupIntentResult(customerId, setupIntent.getClientSecret()));
+            return Optional.of(new SetupIntentResult(name(), customerId, setupIntent.getClientSecret()));
         } catch (Exception e) {
             throw new IllegalStateException("Stripe setup intent failed: " + e.getMessage(), e);
         }
@@ -149,8 +155,10 @@ public class StripePaymentAdapter implements PaymentPort {
 
     @Override
     public Optional<RefundResult> refundSubscription(
-        String stripeSubscriptionId, Long amountCents, String idempotencyKey
+        String stripeSubscriptionId, String lastPaymentReference, Long amountCents, String idempotencyKey
     ) {
+        // lastPaymentReference unused: Stripe's own subscription object already tells us the
+        // latest invoice/payment, so there's nothing to look up from outside.
         if (secretKey.isBlank() || stripeSubscriptionId == null || stripeSubscriptionId.isBlank()) {
             return Optional.empty();
         }
@@ -192,13 +200,14 @@ public class StripePaymentAdapter implements PaymentPort {
     }
 
     @Override
-    public Optional<PaymentEvent> verifyWebhook(String payload, String signature) {
+    public Optional<PaymentEvent> verifyWebhook(String payload, Map<String, String> headers) {
         if (webhookSecret.isBlank()) {
             return Optional.empty();
         }
+        String signature = headers.get("stripe-signature");
         Event event;
         try {
-            event = Webhook.constructEvent(payload, signature, webhookSecret);
+            event = Webhook.constructEvent(payload, signature == null ? "" : signature, webhookSecret);
         } catch (SignatureVerificationException e) {
             return Optional.empty();
         }
@@ -212,21 +221,21 @@ public class StripePaymentAdapter implements PaymentPort {
                     && !sub.getItems().getData().isEmpty()
                     ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
                 yield Optional.of(new PaymentEvent(
-                    event.getId(),
+                    event.getId(), name(),
                     event.getType().endsWith("deleted")
                         ? "subscription_deleted" : "subscription_updated",
                     sub.getCustomer(), sub.getId(), sub.getStatus(),
                     periodEnd == null ? null : Instant.ofEpochSecond(periodEnd),
-                    null));
+                    null, null));
             }
             case "setup_intent.succeeded" -> {
                 SetupIntent setupIntent = (SetupIntent) event.getDataObjectDeserializer()
                     .getObject().orElse(null);
                 yield setupIntent == null ? Optional.empty() : Optional.of(new PaymentEvent(
-                    event.getId(),
+                    event.getId(), name(),
                     "payment_method_attached",
                     setupIntent.getCustomer(), null, null, null,
-                    setupIntent.getPaymentMethod()));
+                    setupIntent.getPaymentMethod(), null));
             }
             default -> Optional.empty();
         };

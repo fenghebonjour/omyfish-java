@@ -27,8 +27,13 @@ public class Subscription {
 
     private Instant trialEnd;
     private Instant currentPeriodEnd;
+    // Processor-agnostic despite the name: every adapter (Stripe/PayPal/Adyen) writes its own
+    // customer/subscription id here. Not renamed to avoid a column/call-site rename with no
+    // behavioral upside; paymentProcessor below records which processor's ids these are.
     private String stripeCustomerId;
     private String stripeSubscriptionId;
+    private String paymentProcessor;
+    private String lastPaymentReference;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -63,16 +68,24 @@ public class Subscription {
         this.updatedAt = Instant.now();
     }
 
-    /** Records Stripe ids as soon as they're known, without changing status. */
-    public void attachStripeIds(String stripeCustomerId, String stripeSubscriptionId) {
-        this.stripeCustomerId = stripeCustomerId;
-        this.stripeSubscriptionId = stripeSubscriptionId;
+    /** Records a processor's ids as soon as they're known, without changing status. */
+    public void attachProcessor(String processor, String customerId, String subscriptionId) {
+        this.paymentProcessor = processor;
+        this.stripeCustomerId = customerId;
+        this.stripeSubscriptionId = subscriptionId;
         this.updatedAt = Instant.now();
     }
 
-    /** Records the Stripe customer id alone, e.g. after tokenizing a payment method pre-checkout. */
-    public void attachStripeCustomerId(String stripeCustomerId) {
-        this.stripeCustomerId = stripeCustomerId;
+    /** Records the processor customer id alone, e.g. after tokenizing a payment method pre-checkout. */
+    public void attachProcessorCustomerId(String processor, String customerId) {
+        this.paymentProcessor = processor;
+        this.stripeCustomerId = customerId;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Records the reference needed to refund the most recently captured payment (e.g. Adyen's pspReference). */
+    public void recordPayment(String reference) {
+        this.lastPaymentReference = reference;
         this.updatedAt = Instant.now();
     }
 
@@ -96,5 +109,7 @@ public class Subscription {
     public Instant getCurrentPeriodEnd() { return currentPeriodEnd; }
     public String getStripeCustomerId() { return stripeCustomerId; }
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
+    public String getPaymentProcessor() { return paymentProcessor; }
+    public String getLastPaymentReference() { return lastPaymentReference; }
     public Instant getCreatedAt() { return createdAt; }
 }

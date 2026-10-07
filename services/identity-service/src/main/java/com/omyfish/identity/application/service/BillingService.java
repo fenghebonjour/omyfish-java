@@ -26,16 +26,16 @@ public class BillingService {
 
     private final SubscriptionRepository subscriptions;
     private final UserRepository users;
-    private final PaymentPort payments;
+    private final PaymentProcessorRegistry processors;
     private final IdempotencyKeyRepository idempotencyKeys;
     private final ProcessedWebhookEventRepository processedWebhookEvents;
 
     public BillingService(SubscriptionRepository subscriptions, UserRepository users,
-                          PaymentPort payments, IdempotencyKeyRepository idempotencyKeys,
+                          PaymentProcessorRegistry processors, IdempotencyKeyRepository idempotencyKeys,
                           ProcessedWebhookEventRepository processedWebhookEvents) {
         this.subscriptions = subscriptions;
         this.users = users;
-        this.payments = payments;
+        this.processors = processors;
         this.idempotencyKeys = idempotencyKeys;
         this.processedWebhookEvents = processedWebhookEvents;
     }
@@ -62,6 +62,11 @@ public class BillingService {
             return Optional.of(replayedCheckout(existing.get(), userId));
         }
 
+        Optional<PaymentPort> processor = processors.defaultProcessor();
+        if (processor.isEmpty()) {
+            return Optional.empty();
+        }
+
         User user = users.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -69,14 +74,14 @@ public class BillingService {
             idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.CHECKOUT, userId);
         try {
             Optional<PaymentPort.SubscriptionIntent> intent =
-                payments.createSubscriptionIntent(userId, user.getEmail(), plan, idempotencyKey);
+                processor.get().createSubscriptionIntent(userId, user.getEmail(), plan, idempotencyKey);
             if (intent.isEmpty()) {
                 idempotencyKeys.delete(reservation);
                 return Optional.empty();
             }
             PaymentPort.SubscriptionIntent i = intent.get();
             Subscription sub = startTrial(userId);
-            sub.attachStripeIds(i.customerId(), i.subscriptionId());
+            sub.attachProcessor(i.processor(), i.customerId(), i.subscriptionId());
             subscriptions.save(sub);
 
             reservation.completeCheckout(i.customerId(), i.subscriptionId(), i.clientSecret(), i.status());
@@ -97,19 +102,24 @@ public class BillingService {
                 "A checkout with this idempotency key is already in progress");
         }
         return new PaymentPort.SubscriptionIntent(
+            subscriptions.findByUserId(userId).map(Subscription::getPaymentProcessor).orElse(null),
             record.getCustomerId(), record.getSubscriptionId(),
             record.getClientSecret(), record.getCheckoutStatus());
     }
 
-    /** Empty when Stripe is not configured. */
+    /** Empty when no payment processor is configured. */
     public Optional<PaymentPort.SetupIntentResult> startPaymentMethodSetup(UUID userId) {
+        Optional<PaymentPort> processor = processors.defaultProcessor();
+        if (processor.isEmpty()) {
+            return Optional.empty();
+        }
         User user = users.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
         Optional<PaymentPort.SetupIntentResult> intent =
-            payments.createSetupIntent(userId, user.getEmail());
+            processor.get().createSetupIntent(userId, user.getEmail());
         intent.ifPresent(i -> {
             Subscription sub = startTrial(userId);
-            sub.attachStripeCustomerId(i.customerId());
+            sub.attachProcessorCustomerId(i.processor(), i.customerId());
             subscriptions.save(sub);
         });
         return intent;
@@ -131,10 +141,12 @@ public class BillingService {
         IdempotencyRecord reservation =
             idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.REFUND, userId);
         try {
-            PaymentPort.RefundResult result = payments.refundSubscription(
-                    sub.getStripeSubscriptionId(), amountCents, idempotencyKey)
+            PaymentPort processor = processors.byName(
+                sub.getPaymentProcessor() != null ? sub.getPaymentProcessor() : "stripe");
+            PaymentPort.RefundResult result = processor.refundSubscription(
+                    sub.getStripeSubscriptionId(), sub.getLastPaymentReference(), amountCents, idempotencyKey)
                 .orElseThrow(() -> new IllegalStateException(
-                    "Stripe is not configured or there is nothing to refund"));
+                    "Payment processor is not configured or there is nothing to refund"));
             reservation.completeRefund(result.refundId(), result.status(), result.amountCents());
             idempotencyKeys.save(reservation);
             return result;
@@ -187,7 +199,17 @@ public class BillingService {
                 return true;
             }
             case "payment_method_attached" -> {
-                payments.setDefaultPaymentMethod(event.customerId(), event.paymentMethodId());
+                processors.byName(event.processor())
+                    .setDefaultPaymentMethod(event.customerId(), event.paymentMethodId());
+                return true;
+            }
+            case "payment_captured" -> {
+                Optional<Subscription> found =
+                    subscriptions.findByStripeCustomerId(event.customerId());
+                if (found.isEmpty()) return false;
+                Subscription sub = found.get();
+                sub.recordPayment(event.paymentReference());
+                subscriptions.save(sub);
                 return true;
             }
             default -> {

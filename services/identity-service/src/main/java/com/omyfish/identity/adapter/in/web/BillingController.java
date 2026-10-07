@@ -1,16 +1,19 @@
 package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.application.service.BillingService;
+import com.omyfish.identity.application.service.PaymentProcessorRegistry;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.TokenPort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -19,12 +22,12 @@ import java.util.UUID;
 public class BillingController {
 
     private final BillingService billing;
-    private final PaymentPort payments;
+    private final PaymentProcessorRegistry processors;
     private final TokenPort tokenPort;
 
-    public BillingController(BillingService billing, PaymentPort payments, TokenPort tokenPort) {
+    public BillingController(BillingService billing, PaymentProcessorRegistry processors, TokenPort tokenPort) {
         this.billing = billing;
-        this.payments = payments;
+        this.processors = processors;
         this.tokenPort = tokenPort;
     }
 
@@ -54,11 +57,13 @@ public class BillingController {
             PaymentPort.SubscriptionIntent intent =
                 billing.startCheckout(userId, request.plan(), idempotencyKey)
                     .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
-            return Map.of(
-                "clientSecret", intent.clientSecret(),
-                "subscriptionId", intent.subscriptionId(),
-                "status", intent.status());
+                        HttpStatus.SERVICE_UNAVAILABLE, "No payment processor is configured"));
+            Map<String, String> response = new LinkedHashMap<>();
+            response.put("processor", intent.processor());
+            response.put("clientSecret", intent.clientSecret());
+            response.put("subscriptionId", intent.subscriptionId());
+            response.put("status", intent.status());
+            return response;
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (IdempotencyConflictException e) {
@@ -73,25 +78,43 @@ public class BillingController {
         UUID userId = requireUser(authHeader);
         PaymentPort.SetupIntentResult intent = billing.startPaymentMethodSetup(userId)
             .orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured"));
-        return Map.of(
-            "clientSecret", intent.clientSecret(),
-            "customerId", intent.customerId());
+                HttpStatus.SERVICE_UNAVAILABLE, "No payment processor is configured"));
+        Map<String, String> response = new LinkedHashMap<>();
+        response.put("processor", intent.processor());
+        response.put("clientSecret", intent.clientSecret());
+        response.put("customerId", intent.customerId());
+        return response;
     }
 
-    @PostMapping("/webhook")
-    public Map<String, Boolean> webhook(
+    @PostMapping("/webhook/{processor}")
+    public ResponseEntity<?> webhook(
+        @PathVariable String processor,
         @RequestBody String payload,
-        @RequestHeader(value = "Stripe-Signature", required = false) String signature
+        @RequestHeader Map<String, String> rawHeaders
     ) {
-        if (!payments.isConfigured()) {
-            throw new ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE, "Stripe is not configured");
+        Map<String, String> headers = new LinkedHashMap<>();
+        rawHeaders.forEach((key, value) -> headers.put(key.toLowerCase(), value));
+
+        if (!processors.exists(processor)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown payment processor: " + processor);
         }
-        var event = payments.verifyWebhook(payload, signature == null ? "" : signature)
+        PaymentPort port;
+        try {
+            port = processors.byName(processor);
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Payment processor is not configured: " + processor);
+        }
+        var event = port.verifyWebhook(payload, headers)
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, "Invalid webhook signature"));
-        return Map.of("handled", billing.applyEvent(event));
+        boolean handled = billing.applyEvent(event);
+
+        // Adyen requires this exact literal body (not JSON) or it keeps retrying the webhook.
+        if ("adyen".equals(processor)) {
+            return ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).body("[accepted]");
+        }
+        return ResponseEntity.ok(Map.of("handled", handled));
     }
 
     record CheckoutRequest(String plan) {}

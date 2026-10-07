@@ -23,12 +23,39 @@ jwt:
   expiration-ms: 86400000
   refresh-expiration-ms: 2592000000
 
-# Stripe (test keys) — billing endpoints return 503 until these are set
+# Payment processors — billing endpoints return 503 until at least one is configured.
+# The default is used for new checkouts; the others are tried in declaration order if it
+# isn't configured. Refunds/webhooks for an existing subscription always go back to
+# whichever processor actually created it, regardless of this default.
+payment:
+  default-processor: ${PAYMENT_DEFAULT_PROCESSOR:stripe}
+
 stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
   price-monthly: ${STRIPE_PRICE_MONTHLY:}   # 5 CAD/month
   price-yearly: ${STRIPE_PRICE_YEARLY:}     # 29 CAD/year
+
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:}
+  client-secret: ${PAYPAL_CLIENT_SECRET:}
+  webhook-id: ${PAYPAL_WEBHOOK_ID:}
+  base-url: ${PAYPAL_BASE_URL:https://api-m.sandbox.paypal.com}
+  plan-monthly: ${PAYPAL_PLAN_MONTHLY:}
+  plan-yearly: ${PAYPAL_PLAN_YEARLY:}
+  return-url: ${PAYPAL_RETURN_URL:}
+  cancel-url: ${PAYPAL_CANCEL_URL:}
+
+adyen:
+  api-key: ${ADYEN_API_KEY:}
+  merchant-account: ${ADYEN_MERCHANT_ACCOUNT:}
+  client-key: ${ADYEN_CLIENT_KEY:}
+  hmac-key: ${ADYEN_HMAC_KEY:}
+  environment: ${ADYEN_ENVIRONMENT:TEST}
+  currency: ${ADYEN_CURRENCY:CAD}
+  price-monthly-cents: ${ADYEN_PRICE_MONTHLY_CENTS:500}
+  price-yearly-cents: ${ADYEN_PRICE_YEARLY_CENTS:2900}
+  return-url: ${ADYEN_RETURN_URL:}
 
 management:
   endpoints:

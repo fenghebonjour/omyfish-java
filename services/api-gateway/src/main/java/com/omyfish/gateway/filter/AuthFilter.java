@@ -29,7 +29,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         "/api/v1/auth/",
         "/api/v1/species",
         "/api/v1/observations/geojson",
-        "/api/v1/billing/webhook"  // Stripe calls this; signature-verified in the service
+        "/api/v1/billing/webhook"  // Stripe/PayPal/Adyen call this; signature-verified in the service
     );
 
     private final SecretKey key;

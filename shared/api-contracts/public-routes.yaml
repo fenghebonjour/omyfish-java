@@ -22,4 +22,4 @@ publicPrefixes:
     reason: public map feed
   - prefix: /api/v1/billing/webhook
     service: identity-service
-    reason: Stripe calls this directly; signature-verified in the service, not JWT-gated
+    reason: Stripe/PayPal/Adyen call this directly; signature-verified in the service, not JWT-gated

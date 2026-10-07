@@ -464,3 +464,26 @@ support/compliance needs querying payment history without hitting Stripe's
 API. Not storing any card data locally is already correct (Stripe
 Checkout/Elements + tokenization keep this service out of PCI SAQ D scope)
 and needs no change.
+
+6. **Multi-acquirer support added (2026-10-07): PayPal and Adyen now sit
+   beside Stripe behind `PaymentPort`, routed through a new
+   `PaymentProcessorRegistry`** (config-driven default + fallback for new
+   checkouts; refunds/webhooks always go back to whichever processor
+   actually owns the subscription, via the new `payment_processor` column
+   added in `V6__add_payment_processor.sql`). Two gaps are intentionally
+   left open rather than silently built or silently skipped:
+   - **Adyen has no subscription object.** `AdyenPaymentAdapter` stores a
+     payment method on first checkout (`recurringProcessingModel=
+     SUBSCRIPTION`), but nothing charges it again on a monthly/yearly
+     schedule — Adyen-sourced subscriptions will not actually renew until a
+     recurring-charge scheduler (a new use case, not an adapter method) is
+     built to charge the stored payment method on our own cadence. Do not
+     route real customers to Adyen as a default processor before this
+     exists.
+   - **No adapter-level tests for PayPal/Adyen.** `BillingServiceTest` and
+     `PaymentProcessorRegistryTest` cover the routing/dispatch logic, but
+     nothing exercises `PayPalPaymentAdapter`/`AdyenPaymentAdapter` against
+     real request/response shapes — there's no sandbox credential in this
+     environment to verify against, and mocking their HTTP responses
+     without ever having seen a real one would give false confidence. Add
+     these once real PayPal/Adyen sandbox credentials are available.

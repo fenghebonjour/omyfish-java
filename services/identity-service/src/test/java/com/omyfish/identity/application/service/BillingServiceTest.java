@@ -9,6 +9,7 @@ import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
 import com.omyfish.identity.domain.port.out.ProcessedWebhookEventRepository;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,12 +33,21 @@ class BillingServiceTest {
     @Mock SubscriptionRepository subscriptions;
     @Mock UserRepository users;
     @Mock PaymentPort payments;
+    @Mock PaymentPort paypalPayments;
+    @Mock PaymentProcessorRegistry processors;
     @Mock IdempotencyKeyRepository idempotencyKeys;
     @Mock ProcessedWebhookEventRepository processedWebhookEvents;
     @InjectMocks BillingService billing;
 
     private static final UUID USER = UUID.randomUUID();
     private static final String IDEMPOTENCY_KEY = "idem-key-1";
+
+    @BeforeEach
+    void setUpDefaultProcessor() {
+        lenient().when(processors.defaultProcessor()).thenReturn(Optional.of(payments));
+        lenient().when(processors.byName(anyString())).thenReturn(payments);
+        lenient().when(payments.name()).thenReturn("stripe");
+    }
 
     @Test
     void startTrial_isIdempotent() {
@@ -67,7 +78,7 @@ class BillingServiceTest {
             .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER));
         when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly", IDEMPOTENCY_KEY))
             .thenReturn(Optional.of(new PaymentPort.SubscriptionIntent(
-                "cus_123", "sub_456", "secret_abc", "incomplete")));
+                "stripe", "cus_123", "sub_456", "secret_abc", "incomplete")));
 
         Optional<PaymentPort.SubscriptionIntent> intent =
             billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY);
@@ -76,8 +87,23 @@ class BillingServiceTest {
         assertThat(intent.get().clientSecret()).isEqualTo("secret_abc");
         assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
         assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_456");
+        assertThat(sub.getPaymentProcessor()).isEqualTo("stripe");
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.TRIALING);
         verify(idempotencyKeys).save(any());
+    }
+
+    @Test
+    void startCheckout_whenNoProcessorConfigured_returnsEmptyWithoutReservingIdempotencyKey() {
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+        when(processors.defaultProcessor()).thenReturn(Optional.empty());
+
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY);
+
+        assertThat(intent).isEmpty();
+        verifyNoInteractions(users);
+        verify(idempotencyKeys, never()).reserve(any(), any(), any());
     }
 
     @Test
@@ -143,12 +169,13 @@ class BillingServiceTest {
     @Test
     void subscriptionUpdatedEvent_incompleteExpired_cancels() {
         Subscription sub = Subscription.startTrial(USER, 7);
-        sub.attachStripeIds("cus_123", "sub_456");
+        sub.attachProcessor("stripe", "cus_123", "sub_456");
         when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "evt_1", "subscription_updated", "cus_123", "sub_456", "incomplete_expired", null, null));
+            "evt_1", "stripe", "subscription_updated", "cus_123", "sub_456", "incomplete_expired",
+            null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -163,7 +190,8 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "evt_2", "subscription_deleted", "cus_123", "sub_456", null, null, null));
+            "evt_2", "stripe", "subscription_deleted", "cus_123", "sub_456", null,
+            null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -179,7 +207,8 @@ class BillingServiceTest {
         Instant periodEnd = Instant.now().plusSeconds(30 * 86400);
 
         billing.applyEvent(new PaymentEvent(
-            "evt_3", "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null));
+            "evt_3", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
+            periodEnd, null, null));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
@@ -190,7 +219,8 @@ class BillingServiceTest {
         when(subscriptions.findByStripeCustomerId("cus_ghost")).thenReturn(Optional.empty());
 
         assertThat(billing.applyEvent(new PaymentEvent(
-            "evt_4", "subscription_updated", "cus_ghost", null, "active", null, null))).isFalse();
+            "evt_4", "stripe", "subscription_updated", "cus_ghost", null, "active",
+            null, null, null))).isFalse();
         verify(processedWebhookEvents, never()).save(any());
     }
 
@@ -220,19 +250,21 @@ class BillingServiceTest {
         when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(payments.createSetupIntent(USER, "angler@example.com"))
             .thenReturn(Optional.of(
-                new PaymentPort.SetupIntentResult("cus_123", "seti_secret_abc")));
+                new PaymentPort.SetupIntentResult("stripe", "cus_123", "seti_secret_abc")));
 
         Optional<PaymentPort.SetupIntentResult> intent = billing.startPaymentMethodSetup(USER);
 
         assertThat(intent).isPresent();
         assertThat(intent.get().clientSecret()).isEqualTo("seti_secret_abc");
         assertThat(sub.getStripeCustomerId()).isEqualTo("cus_123");
+        assertThat(sub.getPaymentProcessor()).isEqualTo("stripe");
     }
 
     @Test
     void applyEvent_paymentMethodAttached_setsDefaultOnPaymentPort() {
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "evt_5", "payment_method_attached", "cus_123", null, null, null, "pm_456"));
+            "evt_5", "stripe", "payment_method_attached", "cus_123", null, null,
+            null, "pm_456", null));
 
         assertThat(handled).isTrue();
         verify(payments).setDefaultPaymentMethod("cus_123", "pm_456");
@@ -240,11 +272,25 @@ class BillingServiceTest {
     }
 
     @Test
+    void applyEvent_dispatchesSetDefaultPaymentMethod_viaEventProcessorNotDefault() {
+        when(processors.byName("paypal")).thenReturn(paypalPayments);
+
+        boolean handled = billing.applyEvent(new PaymentEvent(
+            "evt_paypal", "paypal", "payment_method_attached", "cus_123", null, null,
+            null, "pm_456", null));
+
+        assertThat(handled).isTrue();
+        verify(paypalPayments).setDefaultPaymentMethod("cus_123", "pm_456");
+        verifyNoInteractions(payments);
+    }
+
+    @Test
     void applyEvent_duplicateEventId_skipsReprocessing() {
         when(processedWebhookEvents.existsById("evt_dup")).thenReturn(true);
 
         boolean handled = billing.applyEvent(new PaymentEvent(
-            "evt_dup", "payment_method_attached", "cus_123", null, null, null, "pm_456"));
+            "evt_dup", "stripe", "payment_method_attached", "cus_123", null, null,
+            null, "pm_456", null));
 
         assertThat(handled).isTrue();
         verifyNoInteractions(payments);
@@ -254,13 +300,13 @@ class BillingServiceTest {
     @Test
     void refund_delegatesToPaymentPort() {
         Subscription sub = Subscription.startTrial(USER, 7);
-        sub.attachStripeIds("cus_123", "sub_456");
+        sub.attachProcessor("stripe", "cus_123", "sub_456");
         when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
             .thenReturn(Optional.empty());
         when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER))
             .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER));
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
-        when(payments.refundSubscription("sub_456", 500L, IDEMPOTENCY_KEY))
+        when(payments.refundSubscription("sub_456", null, 500L, IDEMPOTENCY_KEY))
             .thenReturn(Optional.of(new PaymentPort.RefundResult("re_1", "succeeded", 500L)));
 
         PaymentPort.RefundResult result = billing.refund(USER, 500L, IDEMPOTENCY_KEY);
@@ -268,6 +314,26 @@ class BillingServiceTest {
         assertThat(result.refundId()).isEqualTo("re_1");
         assertThat(result.amountCents()).isEqualTo(500L);
         verify(idempotencyKeys).save(any());
+    }
+
+    @Test
+    void refund_resolvesProcessorFromSubscription_notAlwaysDefault() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachProcessor("paypal", "cus_123", "I-sub-456");
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.empty());
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER))
+            .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER));
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(processors.byName("paypal")).thenReturn(paypalPayments);
+        when(paypalPayments.refundSubscription("I-sub-456", null, 500L, IDEMPOTENCY_KEY))
+            .thenReturn(Optional.of(new PaymentPort.RefundResult("re_2", "COMPLETED", 500L)));
+
+        PaymentPort.RefundResult result = billing.refund(USER, 500L, IDEMPOTENCY_KEY);
+
+        assertThat(result.refundId()).isEqualTo("re_2");
+        verify(processors).byName("paypal");
+        verifyNoInteractions(payments);
     }
 
     @Test
@@ -309,7 +375,7 @@ class BillingServiceTest {
     @Test
     void refund_whenStripeCallFails_releasesReservationForRetry() {
         Subscription sub = Subscription.startTrial(USER, 7);
-        sub.attachStripeIds("cus_123", "sub_456");
+        sub.attachProcessor("stripe", "cus_123", "sub_456");
         when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
             .thenReturn(Optional.empty());
         IdempotencyRecord reservation =
@@ -317,7 +383,7 @@ class BillingServiceTest {
         when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER))
             .thenReturn(reservation);
         when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
-        when(payments.refundSubscription("sub_456", null, IDEMPOTENCY_KEY))
+        when(payments.refundSubscription("sub_456", null, null, IDEMPOTENCY_KEY))
             .thenThrow(new IllegalStateException("Stripe refund failed: boom"));
 
         assertThatThrownBy(() -> billing.refund(USER, null, IDEMPOTENCY_KEY))
