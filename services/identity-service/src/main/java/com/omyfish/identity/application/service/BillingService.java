@@ -12,6 +12,7 @@ import com.omyfish.identity.domain.port.out.ProcessedWebhookEventRepository;
 import com.omyfish.identity.domain.port.out.SubscriptionRepository;
 import com.omyfish.identity.domain.port.out.UserRepository;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -23,6 +24,15 @@ public class BillingService {
     public static final int TRIAL_DAYS = 7;
     public static final double MONTHLY_CAD = 5;
     public static final double YEARLY_CAD = 29;
+
+    /**
+     * How long an incomplete checkout/refund reservation sits before it's treated as orphaned
+     * rather than "still in progress" (BACKLOG.md item I.8). Comfortably past the processor
+     * adapters' own worst-case call time (10s connect + 15s read timeout, item I.4) — a
+     * reservation only outlives that if the process died before it could complete, since a
+     * thrown RuntimeException already deletes the row (see the catch blocks below).
+     */
+    private static final Duration STALE_RESERVATION_AGE = Duration.ofMinutes(1);
 
     private final SubscriptionRepository subscriptions;
     private final UserRepository users;
@@ -58,7 +68,7 @@ public class BillingService {
         }
         Optional<IdempotencyRecord> existing =
             idempotencyKeys.find(idempotencyKey, IdempotencyRecord.CHECKOUT);
-        if (existing.isPresent()) {
+        if (existing.isPresent() && !isOrphaned(existing.get())) {
             return Optional.of(replayedCheckout(existing.get(), userId));
         }
 
@@ -70,8 +80,9 @@ public class BillingService {
         User user = users.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        IdempotencyRecord reservation =
-            idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.CHECKOUT, userId);
+        IdempotencyRecord reservation = existing.isPresent()
+            ? requireOwner(existing.get(), userId)
+            : idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.CHECKOUT, userId);
         try {
             Optional<PaymentPort.SubscriptionIntent> intent =
                 processor.get().createSubscriptionIntent(userId, user.getEmail(), plan, idempotencyKey);
@@ -94,9 +105,7 @@ public class BillingService {
     }
 
     private PaymentPort.SubscriptionIntent replayedCheckout(IdempotencyRecord record, UUID userId) {
-        if (!record.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("Idempotency key already used");
-        }
+        requireOwner(record, userId);
         if (!record.isCompleted()) {
             throw new IdempotencyConflictException(
                 "A checkout with this idempotency key is already in progress");
@@ -128,7 +137,7 @@ public class BillingService {
     public PaymentPort.RefundResult refund(UUID userId, Long amountCents, String idempotencyKey) {
         Optional<IdempotencyRecord> existing =
             idempotencyKeys.find(idempotencyKey, IdempotencyRecord.REFUND);
-        if (existing.isPresent()) {
+        if (existing.isPresent() && !isOrphaned(existing.get())) {
             return replayedRefund(existing.get(), userId);
         }
 
@@ -138,8 +147,9 @@ public class BillingService {
             throw new IllegalArgumentException("No Stripe subscription on file");
         }
 
-        IdempotencyRecord reservation =
-            idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.REFUND, userId);
+        IdempotencyRecord reservation = existing.isPresent()
+            ? requireOwner(existing.get(), userId)
+            : idempotencyKeys.reserve(idempotencyKey, IdempotencyRecord.REFUND, userId);
         try {
             PaymentPort processor = processors.byName(
                 sub.getPaymentProcessor() != null ? sub.getPaymentProcessor() : "stripe");
@@ -157,15 +167,34 @@ public class BillingService {
     }
 
     private PaymentPort.RefundResult replayedRefund(IdempotencyRecord record, UUID userId) {
-        if (!record.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("Idempotency key already used");
-        }
+        requireOwner(record, userId);
         if (!record.isCompleted()) {
             throw new IdempotencyConflictException(
                 "A refund with this idempotency key is already in progress");
         }
         return new PaymentPort.RefundResult(
             record.getRefundId(), record.getRefundStatus(), record.getAmountCents());
+    }
+
+    /**
+     * An incomplete reservation past STALE_RESERVATION_AGE can only mean the process that made
+     * the processor call died before persisting its result (BACKLOG.md item I.8) — the call
+     * itself always finishes well inside that margin. Safe to retry with the same reservation
+     * row and the same idempotencyKey: the processor's own idempotency cache (item I.1's second
+     * layer) returns the original response if the call already went through, or actually
+     * performs it now if it never did — either way this can't double-execute. A fresh,
+     * plausibly-still-in-flight reservation is left alone so a concurrent request for the same
+     * key gets the conflict instead of also retrying.
+     */
+    private boolean isOrphaned(IdempotencyRecord record) {
+        return !record.isCompleted() && record.isStale(STALE_RESERVATION_AGE);
+    }
+
+    private IdempotencyRecord requireOwner(IdempotencyRecord record, UUID userId) {
+        if (!record.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("Idempotency key already used");
+        }
+        return record;
     }
 
     public boolean applyEvent(PaymentEvent event) {

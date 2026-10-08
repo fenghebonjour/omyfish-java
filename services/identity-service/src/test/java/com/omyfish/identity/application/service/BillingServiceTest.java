@@ -15,7 +15,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +43,13 @@ class BillingServiceTest {
 
     private static final UUID USER = UUID.randomUUID();
     private static final String IDEMPOTENCY_KEY = "idem-key-1";
+
+    /** An incomplete reservation old enough for BillingService to treat as orphaned, not in-progress. */
+    private static IdempotencyRecord staleRecord(String key, String endpoint, UUID userId) {
+        IdempotencyRecord record = IdempotencyRecord.reserve(key, endpoint, userId);
+        ReflectionTestUtils.setField(record, "createdAt", Instant.now().minus(Duration.ofMinutes(5)));
+        return record;
+    }
 
     @BeforeEach
     void setUpDefaultProcessor() {
@@ -132,6 +141,45 @@ class BillingServiceTest {
 
         assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
             .isInstanceOf(IdempotencyConflictException.class);
+    }
+
+    @Test
+    void startCheckout_withStaleInProgressIdempotencyKey_retriesAndCompletes() {
+        IdempotencyRecord stale = staleRecord(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER);
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.of(stale));
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(Subscription.startTrial(USER, 7)));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(payments.createSubscriptionIntent(USER, "angler@example.com", "yearly", IDEMPOTENCY_KEY))
+            .thenReturn(Optional.of(new PaymentPort.SubscriptionIntent(
+                "stripe", "cus_123", "sub_456", "secret_abc", "incomplete")));
+
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY);
+
+        assertThat(intent).isPresent();
+        assertThat(intent.get().clientSecret()).isEqualTo("secret_abc");
+        assertThat(stale.isCompleted()).isTrue();
+        verify(idempotencyKeys, never()).reserve(any(), any(), any());
+        verify(idempotencyKeys).save(stale);
+    }
+
+    @Test
+    void startCheckout_withStaleInProgressIdempotencyKeyUsedByAnotherUser_throws() {
+        IdempotencyRecord stale =
+            staleRecord(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, UUID.randomUUID());
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.of(stale));
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(payments);
     }
 
     @Test
@@ -370,6 +418,25 @@ class BillingServiceTest {
         assertThat(result.refundId()).isEqualTo("re_1");
         verifyNoInteractions(payments);
         verify(subscriptions, never()).findByUserId(any());
+    }
+
+    @Test
+    void refund_withStaleInProgressIdempotencyKey_retriesAndCompletes() {
+        IdempotencyRecord stale = staleRecord(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND, USER);
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.REFUND))
+            .thenReturn(Optional.of(stale));
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachProcessor("stripe", "cus_123", "sub_456");
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(payments.refundSubscription("sub_456", null, 500L, IDEMPOTENCY_KEY))
+            .thenReturn(Optional.of(new PaymentPort.RefundResult("re_1", "succeeded", 500L)));
+
+        PaymentPort.RefundResult result = billing.refund(USER, 500L, IDEMPOTENCY_KEY);
+
+        assertThat(result.refundId()).isEqualTo("re_1");
+        assertThat(stale.isCompleted()).isTrue();
+        verify(idempotencyKeys, never()).reserve(any(), any(), any());
+        verify(idempotencyKeys).save(stale);
     }
 
     @Test

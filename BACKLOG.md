@@ -368,8 +368,10 @@ a prior backlog entry — this was new scope, not a ported/audited item.
 **Status:** DONE for the original 5-item MVP checklist (2026-10-06 through 2026-10-07).
 Multi-acquirer support (item 6) and the Apple Pay/WeChat Pay investigation (item 7) were
 separate, later additions layered onto this same entry — item 6 still carries its own two
-documented open gaps (Adyen recurring-charge scheduler, adapter-level PayPal/Adyen tests), so
-this backlog entry isn't fully closed, just the ordered MVP scope below is. Prompted by mapping
+documented open gaps (Adyen recurring-charge scheduler, adapter-level PayPal/Adyen tests). Item 8
+(idempotency-key reservations stuck forever after a crash, found and fixed 2026-10-08) was a
+further gap in the same vein, now closed. This backlog entry isn't fully closed overall — item 6's
+two gaps remain — but the ordered MVP scope below, plus item 8, are. Prompted by mapping
 item H's billing module
 against standard payment-interview architecture questions (industry MVP
 checklist: idempotency, state machine, retries, reconciliation, provider
@@ -575,3 +577,105 @@ and needs no change.
      WeChat Pay is wanted later, it'd need a genuinely separate one-time
      top-up flow (new use case, new endpoint), not a bolt-on to subscription
      checkout.
+
+8. **Idempotency-key reservations have no self-healing path — unlike item 3's
+   subscription-link reconciliation, nothing ever revisits `idempotency_keys`
+   rows (found 2026-10-08, fixed 2026-10-08).**
+   `startCheckout` and `refund` both follow the same shape: `idempotencyKeys
+   .reserve(...)` (local write) → the processor call (**external**, Stripe/
+   PayPal/Adyen over HTTP) → `subscriptions.save(...)` /
+   `reservation.completeCheckout(...)`+`idempotencyKeys.save(...)` (local
+   write(s)). If the process crashes between the processor call succeeding
+   and that completing write, the `IdempotencyRecord` is stuck at
+   `completed = false` forever — there's no TTL column and no expiry/cleanup
+   method anywhere on `IdempotencyKeyRepository`. Two concrete consequences:
+   - A client doing the *correct* thing — retrying with the same
+     `Idempotency-Key`, which is the entire point of the header — hits
+     `replayedCheckout`/`replayedRefund`, which reads `record.isCompleted()`
+     as `false` forever, so it gets `IdempotencyConflictException` ("already
+     in progress") on every retry, permanently. This stays broken even after
+     item 3's `ReconciliationJob` has already repaired the underlying
+     `Subscription` row — reconciliation fixes the data but never reaches
+     the stuck `idempotency_keys` row, so the caller can never get a success
+     response for that key.
+   - A client that gives up and generates a *fresh* key instead sidesteps
+     the stuck row and calls the processor again. For checkout that risks a
+     second Stripe subscription for the same user. For refund it's worse:
+     the local `idempotencyKey` value is passed straight through as
+     Stripe's own idempotency key
+     (`processor.get().refundSubscription(..., idempotencyKey)`), so a new
+     local key is also a new Stripe-side key — Stripe's own dedup doesn't
+     catch it either, meaning a real double refund (money actually leaving
+     twice), not just a duplicate local row.
+
+   `refund` is worse off than `startCheckout`/`startPaymentMethodSetup` here,
+   too: item 3's `ReconciliationService.reconcile()` only ever calls
+   `SubscriptionRepository` — it has no equivalent "list recent processor
+   refunds and repair" leg, so refund gets neither the link-repair nor an
+   idempotency-key cleanup safety net that checkout partially gets.
+
+   **How this compares to `WEAKNESS_AUDIT.md` §2.3 (the outbox pattern):**
+   §2.3 was two *local* writes — the observation insert and the outbox-row
+   insert, both in the same Postgres instance — that needed to commit or
+   roll back together, which is exactly what a database transaction is for.
+   The fix there was mechanical once the Spring-free `application/`
+   constraint was worked around: wrap both writes in one `@Transactional`
+   boundary (`TransactionalCreateObservationUseCase` in `config/`), full
+   stop.
+
+   This billing case is a different shape of problem and can't take that
+   fix: one side of the write is local (our DB) but the other is an
+   **external** call to Stripe/PayPal/Adyen over HTTP. No local database
+   transaction can make "call Stripe" and "write our row" atomic — rolling
+   back a Postgres transaction does not un-charge a card or un-create a
+   Stripe subscription. That's why `BillingService` doesn't reach for
+   `@Transactional` the way `ObservationService` did, and why this needed a
+   different pair of patterns instead: an idempotency-key handshake *before*
+   the external call (item 1) so a retry is safe, plus an out-of-band
+   reconciliation process that treats the processor as the source of truth
+   and repairs local state after the fact (item 3). Both pieces exist — but
+   item 3's reconciliation leg was only ever built for one of the two local
+   writes this pattern produces (the `Subscription` row), not the other (the
+   `IdempotencyRecord` row), and was never built at all for `refund`. So,
+   unlike §2.3, the fix here isn't "add a transaction boundary" — it's
+   "finish the reconciliation side for the piece that got missed."
+
+   **Fix shipped (2026-10-08) — simpler than the sweep job first sketched
+   here:** rather than a separate scheduled job that needs its own way to
+   ask each processor "did this actually happen" (a new `PaymentPort`
+   method per processor, parallel to item 3's `listRecentSubscriptions`),
+   `startCheckout`/`refund` now resolve a stale reservation **inline, on
+   the client's own retry** — which is both less code and faster for the
+   caller than waiting on a 30-minute job:
+   - `IdempotencyRecord.isStale(Duration)` (new) compares `createdAt`
+     against a `BillingService`-local `STALE_RESERVATION_AGE` constant
+     (1 minute — comfortably past item 4's 10s-connect/15s-read processor
+     timeout, so a reservation only outlives it if the process died before
+     finishing, not because the call is still genuinely running).
+   - `startCheckout`/`refund`'s existing-reservation branch now checks
+     staleness via a new `isOrphaned(record)` helper: a *fresh* incomplete
+     reservation still throws `IdempotencyConflictException` exactly as
+     before (so two truly-concurrent requests for the same key don't both
+     proceed); a *stale* incomplete reservation is no longer a dead end —
+     the method falls through and retries the processor call using that
+     same row (via a new `requireOwner(record, userId)` helper, shared with
+     the existing replay path) instead of calling `idempotencyKeys.reserve`
+     again, then completes or deletes that same row exactly as the normal
+     first-attempt path already does.
+   - This is safe for the same reason item 1 already noted in passing
+     ("Pass the same key through to Stripe's own
+     `RequestOptions.setIdempotencyKey(...)` as a second layer"): retrying
+     with the *same* idempotency key against Stripe/PayPal/Adyen either
+     replays the processor's own cached original response (if the call
+     already went through) or actually performs the action now (if it
+     never did) — never both. No new `PaymentPort` method, no new
+     scheduled job, no refund-listing endpoint needed on any processor.
+   - This only helps a caller that retries with the *same* key, which is
+     the correct, documented contract of an idempotency key — not a caller
+     that gives up and mints a fresh one; that residual risk already existed
+     before this fix and is unchanged by it.
+   Verified via 3 new `BillingServiceTest` cases (stale checkout reservation
+   retried and completed without a second `reserve()` call; stale checkout
+   reservation owned by a different user still rejected; stale refund
+   reservation retried and completed) — full `mvn test -pl
+   services/identity-service` green (57 tests, up from 54).

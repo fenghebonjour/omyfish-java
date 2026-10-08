@@ -1,6 +1,7 @@
 package com.omyfish.identity.domain.model;
 
 import jakarta.persistence.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -68,6 +69,11 @@ public class IdempotencyRecord {
         this.refundStatus = status;
         this.amountCents = amountCents;
         this.completed = true;
+    }
+
+    /** True once this reservation has sat uncompleted for longer than maxAge. */
+    public boolean isStale(Duration maxAge) {
+        return createdAt.isBefore(Instant.now().minus(maxAge));
     }
 
     public UUID getUserId() { return userId; }
