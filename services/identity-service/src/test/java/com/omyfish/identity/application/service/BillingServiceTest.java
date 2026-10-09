@@ -102,6 +102,57 @@ class BillingServiceTest {
     }
 
     @Test
+    void startCheckout_whenAlreadyActiveSubscription_throwsConflictWithoutCallingStripe() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_existing");
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "yearly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Already subscribed");
+
+        verifyNoInteractions(payments);
+        verify(idempotencyKeys, never()).reserve(any(), any(), any());
+    }
+
+    @Test
+    void startCheckout_whenPastDueSubscription_throwsConflict() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_existing");
+        sub.markPastDue();
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> billing.startCheckout(USER, "monthly", IDEMPOTENCY_KEY))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void startCheckout_whenOnlyTrialingNoProcessorYet_proceeds() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        when(users.findById(USER)).thenReturn(Optional.of(
+            com.omyfish.identity.domain.model.User.create(
+                "angler@example.com", "hash", "user")));
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
+            .thenReturn(Optional.empty());
+        when(idempotencyKeys.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER))
+            .thenReturn(IdempotencyRecord.reserve(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT, USER));
+        when(payments.createSubscriptionIntent(USER, "angler@example.com", "monthly", IDEMPOTENCY_KEY))
+            .thenReturn(Optional.of(new PaymentPort.SubscriptionIntent(
+                "stripe", "cus_123", "sub_456", "secret_abc", "incomplete")));
+
+        Optional<PaymentPort.SubscriptionIntent> intent =
+            billing.startCheckout(USER, "monthly", IDEMPOTENCY_KEY);
+
+        assertThat(intent).isPresent();
+    }
+
+    @Test
     void startCheckout_whenNoProcessorConfigured_returnsEmptyWithoutReservingIdempotencyKey() {
         when(idempotencyKeys.find(IDEMPOTENCY_KEY, IdempotencyRecord.CHECKOUT))
             .thenReturn(Optional.empty());

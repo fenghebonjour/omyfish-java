@@ -816,4 +816,55 @@ Still open: nothing code-side. The one manual follow-up is the Stripe
 Dashboard Customer Portal configuration noted in item 1 — without it,
 `createPortalSession` will get a real error back from Stripe in any
 environment this is deployed to, sandbox or otherwise.
-untouched so far.
+
+---
+
+## [x] K — Guard against a duplicate Stripe subscription from a second checkout call
+
+**Status:** DONE (2026-10-10). Found live, not in testing: after item J shipped,
+a second `POST /billing/checkout` call with a different idempotency key (exact
+trigger unconfirmed — not required to fix it) created a **second, separate,
+active Stripe subscription** for a user who already had one — both billing
+$5 CAD/month going forward. Confirmed via `stripe invoices list --customer
+<id>`: two invoices, both `billing_reason: "subscription_create"`, ~21
+minutes apart, two different subscription ids, both `status: "active"` on
+retrieval. The existing idempotency-key protection (item I.1) only replays a
+retry of the *same* key — it was never meant to, and doesn't, stop two
+genuinely different checkout calls from each creating their own Stripe
+subscription.
+
+Fix: `BillingService.startCheckout` now checks `subscriptions.findByUserId`
+for an existing row with a `stripeSubscriptionId` already attached and a
+`active`/`past_due` effective status, and throws `IllegalStateException`
+("Already subscribed") before ever reaching the idempotency-key reservation
+or the processor call — placed after the existing-key replay check so a
+legitimate retry still works. `BillingController.checkout` maps that to
+`409 Conflict` (new catch block, same pattern as the existing
+`IdempotencyConflictException` → 409). A user who's only `trialing` (no
+processor attached yet) is unaffected and can still check out normally.
+
+Immediate cleanup: the duplicate subscription
+(`sub_1UOdSYHrdBeHTXIsMNc0vgPp`) was canceled via `stripe subscriptions
+cancel` in the sandbox; confirmed the local DB row was unaffected (still
+`active`, still pointing at the surviving `sub_1UOd8QHrdBeHTXIsUUie0Rpj`) —
+worth calling out because it could easily not have been: `stripe listen`
+forwarding a `customer.subscription.deleted` webhook for the canceled one
+would have gone through `BillingService.applyEventEffects`'s
+`subscription_updated`/`deleted` case, which matches the local row by
+`stripeCustomerId` **alone**, not by which specific `stripeSubscriptionId`
+the event is about — so if that listener had still been running, canceling
+the duplicate could have wrongly flipped the *surviving* subscription to
+canceled locally. That matching-by-customer-only gap is real and still
+unfixed; it just didn't fire this time. Worth hardening later (match the
+event's `subscriptionId` against the local row's too, not just
+`customerId`) now that item K's guard makes a user ever legitimately having
+two Stripe subscriptions at once much rarer — but not re-scoped into this
+fix since nothing currently exercises it.
+
+Verified via two new `BillingServiceTest` cases
+(`startCheckout_whenAlreadyActiveSubscription_throwsConflictWithoutCallingStripe`,
+`startCheckout_whenPastDueSubscription_throwsConflict`) plus one confirming
+the trialing-only case still proceeds normally
+(`startCheckout_whenOnlyTrialingNoProcessorYet_proceeds`); full
+`mvn test -pl services/identity-service -am` on a clean build — 72/72 green
+across all 6 test classes.

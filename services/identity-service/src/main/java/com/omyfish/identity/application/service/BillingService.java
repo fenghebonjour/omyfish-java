@@ -72,6 +72,19 @@ public class BillingService {
             return Optional.of(replayedCheckout(existing.get(), userId));
         }
 
+        // A second checkout call with a genuinely different idempotency key (e.g. a double
+        // click, or a retest against an account that's already paying) must not create a
+        // second live Stripe subscription for the same user — the idempotency-key check above
+        // only catches a retry of the *same* key. Found 2026-10-10 after exactly this happened:
+        // two separate "active" Stripe subscriptions, both billing the same user every month.
+        subscriptions.findByUserId(userId).ifPresent(sub -> {
+            String status = sub.getEffectiveStatus();
+            if (sub.getStripeSubscriptionId() != null
+                && (Subscription.ACTIVE.equals(status) || Subscription.PAST_DUE.equals(status))) {
+                throw new IllegalStateException("Already subscribed");
+            }
+        });
+
         Optional<PaymentPort> processor = processors.defaultProcessor();
         if (processor.isEmpty()) {
             return Optional.empty();
