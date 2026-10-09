@@ -679,3 +679,72 @@ and needs no change.
    reservation owned by a different user still rejected; stale refund
    reservation retried and completed) — full `mvn test -pl
    services/identity-service` green (57 tests, up from 54).
+
+---
+
+## [ ] J — Self-service account & billing management
+
+**Status:** NOT STARTED. Prompted by a gap review against item H/I's billing
+module: there's no self-service cancel, no plan upgrade/downgrade, no
+change-password, and no handling of a failed renewal charge. Ordered
+cheapest/highest-payoff first, each independently shippable.
+
+1. **Stripe Customer Portal for self-service cancel/upgrade/invoices.**
+   Add `POST /api/v1/billing/portal-session` to `BillingController`,
+   backed by a new `PaymentPort.createPortalSession(customerId, returnUrl)`
+   (Stripe-only — `StripePaymentAdapter` calls
+   `stripe.billingPortal.sessions.create(...)`; other processors return
+   `Optional.empty()`, same "unconfigured" convention the port already
+   uses elsewhere). Frontend: a "Manage billing" button on `/account` that
+   redirects to the returned URL. One manual one-time setup step in the
+   Stripe Dashboard (not code): enable the Customer Portal and configure
+   which products/prices customers may switch between, so monthly↔yearly
+   upgrade/downgrade is actually offered. Covers self-service cancel,
+   upgrade/downgrade, invoice history, and resume-before-cancel-takes-effect
+   — for Stripe customers only (see item 5).
+2. **Propagate plan changes from the webhook.** A prerequisite for item 1's
+   upgrade/downgrade to actually show correctly in our own UI:
+   `StripePaymentAdapter.verifyWebhook`'s `customer.subscription.updated`
+   case reads status and period-end off the Stripe `Subscription` object
+   but never reads the price/item, and `PaymentPort.PaymentEvent` has no
+   plan field — so `BillingService.applyEventEffects` falls back to the
+   stale local `sub.getPlan()` on every update. Add a `plan` field to
+   `PaymentEvent`; have the adapter map the subscription item's Stripe
+   price id back to `"monthly"`/`"yearly"` (reverse of the existing
+   `stripe.price-monthly`/`price-yearly` config) and populate it; have
+   `BillingService` use `event.plan()` when present instead of the old
+   value. Without this, a portal-initiated upgrade silently shows the old
+   plan in `/account` and the admin dashboard.
+3. **Change password.** No endpoint exists in `AuthController` today
+   (register/login/refresh/logout/me/api-keys only). Add
+   `POST /api/v1/auth/password` — verify the current password, hash and
+   save the new one, and invalidate existing refresh tokens (reuse
+   whatever `AuthController.logout`/`refresh` already uses for token
+   revocation) so other sessions don't stay logged in on the old
+   credential. Frontend: a form in `/account`'s profile section.
+4. **Past_due status + failed-renewal handling.** `Subscription` only
+   models trialing/active/canceled/expired (`BillingService.Stats`); there's
+   no state for "renewal charge failed but Stripe is still retrying," and
+   `StripePaymentAdapter.verifyWebhook`'s switch has no case for
+   `invoice.payment_failed`. Add a `PAST_DUE` status, a new
+   `PaymentEvent` type (e.g. `"payment_failed"`) mapped from that Stripe
+   event, and a `BillingService.applyEventEffects` case that sets it.
+   Surface it in `GET /billing/me` and show a banner on `/account`
+   ("Your last payment failed — update your card") that deep-links to the
+   item-1 portal session — no new custom card-update UI needed.
+5. **Decide PayPal/Adyen parity.** Neither has a hosted portal equivalent
+   to item 1, so self-service cancel/upgrade/invoice-history would need
+   hand-built endpoints for those two processors specifically, or be
+   scoped Stripe-only for now with PayPal/Adyen cancellations routed
+   through the existing admin `revoke` action as a support-assisted
+   workaround. Needs an explicit call before item 1 ships, since the
+   `/account` UI has to know whether to show "Manage billing" or a
+   fallback for non-Stripe customers.
+6. **Nav wiring.** `NavBar.tsx` currently links Timing/Identify/Regs &
+   Tips/My Observations/Notifications only — no link to `/account` or
+   `/admin` (role-gated) exists, so both pages are only reachable by typing
+   the URL directly. Also: the admin page has no button for the already-
+   shipped `POST /api/v1/admin/subscriptions/{userId}/refund` (item H) —
+   add one next to grant/extend-trial/revoke.
+
+Verified: nothing yet — not started.
