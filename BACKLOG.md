@@ -684,67 +684,136 @@ and needs no change.
 
 ## [ ] J — Self-service account & billing management
 
-**Status:** NOT STARTED. Prompted by a gap review against item H/I's billing
-module: there's no self-service cancel, no plan upgrade/downgrade, no
-change-password, and no handling of a failed renewal charge. Ordered
-cheapest/highest-payoff first, each independently shippable.
+**Status:** CODE DONE (2026-10-09, uncommitted); one manual Stripe Dashboard
+step still needed before item 1 is actually usable in any environment (see
+item 1). Prompted by a gap review against item H/I's billing module: there
+was no self-service cancel, no plan upgrade/downgrade, no change-password,
+and no handling of a failed renewal charge.
 
-1. **Stripe Customer Portal for self-service cancel/upgrade/invoices.**
-   Add `POST /api/v1/billing/portal-session` to `BillingController`,
-   backed by a new `PaymentPort.createPortalSession(customerId, returnUrl)`
-   (Stripe-only — `StripePaymentAdapter` calls
-   `stripe.billingPortal.sessions.create(...)`; other processors return
-   `Optional.empty()`, same "unconfigured" convention the port already
-   uses elsewhere). Frontend: a "Manage billing" button on `/account` that
-   redirects to the returned URL. One manual one-time setup step in the
-   Stripe Dashboard (not code): enable the Customer Portal and configure
-   which products/prices customers may switch between, so monthly↔yearly
-   upgrade/downgrade is actually offered. Covers self-service cancel,
-   upgrade/downgrade, invoice history, and resume-before-cancel-takes-effect
-   — for Stripe customers only (see item 5).
-2. **Propagate plan changes from the webhook.** A prerequisite for item 1's
-   upgrade/downgrade to actually show correctly in our own UI:
-   `StripePaymentAdapter.verifyWebhook`'s `customer.subscription.updated`
-   case reads status and period-end off the Stripe `Subscription` object
-   but never reads the price/item, and `PaymentPort.PaymentEvent` has no
-   plan field — so `BillingService.applyEventEffects` falls back to the
-   stale local `sub.getPlan()` on every update. Add a `plan` field to
-   `PaymentEvent`; have the adapter map the subscription item's Stripe
-   price id back to `"monthly"`/`"yearly"` (reverse of the existing
-   `stripe.price-monthly`/`price-yearly` config) and populate it; have
-   `BillingService` use `event.plan()` when present instead of the old
-   value. Without this, a portal-initiated upgrade silently shows the old
-   plan in `/account` and the admin dashboard.
-3. **Change password.** No endpoint exists in `AuthController` today
-   (register/login/refresh/logout/me/api-keys only). Add
-   `POST /api/v1/auth/password` — verify the current password, hash and
-   save the new one, and invalidate existing refresh tokens (reuse
-   whatever `AuthController.logout`/`refresh` already uses for token
-   revocation) so other sessions don't stay logged in on the old
-   credential. Frontend: a form in `/account`'s profile section.
-4. **Past_due status + failed-renewal handling.** `Subscription` only
-   models trialing/active/canceled/expired (`BillingService.Stats`); there's
-   no state for "renewal charge failed but Stripe is still retrying," and
-   `StripePaymentAdapter.verifyWebhook`'s switch has no case for
-   `invoice.payment_failed`. Add a `PAST_DUE` status, a new
-   `PaymentEvent` type (e.g. `"payment_failed"`) mapped from that Stripe
-   event, and a `BillingService.applyEventEffects` case that sets it.
-   Surface it in `GET /billing/me` and show a banner on `/account`
-   ("Your last payment failed — update your card") that deep-links to the
-   item-1 portal session — no new custom card-update UI needed.
-5. **Decide PayPal/Adyen parity.** Neither has a hosted portal equivalent
-   to item 1, so self-service cancel/upgrade/invoice-history would need
-   hand-built endpoints for those two processors specifically, or be
-   scoped Stripe-only for now with PayPal/Adyen cancellations routed
-   through the existing admin `revoke` action as a support-assisted
-   workaround. Needs an explicit call before item 1 ships, since the
-   `/account` UI has to know whether to show "Manage billing" or a
-   fallback for non-Stripe customers.
-6. **Nav wiring.** `NavBar.tsx` currently links Timing/Identify/Regs &
-   Tips/My Observations/Notifications only — no link to `/account` or
-   `/admin` (role-gated) exists, so both pages are only reachable by typing
-   the URL directly. Also: the admin page has no button for the already-
-   shipped `POST /api/v1/admin/subscriptions/{userId}/refund` (item H) —
-   add one next to grant/extend-trial/revoke.
+1. ~~Stripe Customer Portal for self-service cancel/upgrade/invoices~~ —
+   **DONE (2026-10-09, uncommitted), with one manual step still owed.**
+   `PaymentPort.createPortalSession(customerId, returnUrl)` added;
+   `StripePaymentAdapter` implements it via
+   `com.stripe.model.billingportal.Session.create(...)`; PayPal/Adyen
+   adapters return `Optional.empty()` (item 5). `BillingService
+   .createPortalSession(userId, returnUrl)` resolves the subscription's
+   actual processor the same way `refund()` already does, not always
+   Stripe. `POST /api/v1/billing/portal-session` added to
+   `BillingController` (plain `/api/v1/billing/**`, not the webhook's
+   public prefix — gateway JWT-gates it like checkout already is, no
+   `AuthFilter`/contract-test change needed). Frontend: `/account` shows a
+   "Manage billing" button when `paymentProcessor === "stripe"` (status
+   active or past_due), or a "contact support" line otherwise —
+   `SubscriptionDto`/`BillingController.SubscriptionResponse` both gained
+   a `paymentProcessor` field so the frontend can tell.
+   **Not done — a manual, one-time step only a human can do:** in the
+   Stripe Dashboard, the Customer Portal has to actually be enabled and
+   its allowed products/prices configured, or every portal session the
+   code requests will fail (no monthly↔yearly switching is offered until
+   that's set). No test can verify this; it's a dashboard checkbox, not
+   code. Verified via new `BillingServiceTest` cases (delegates to the
+   right processor by subscription, 404s with no subscription/no
+   processor customer id, empty for a processor with no portal) and
+   `npx tsc --noEmit`/`npx vitest run` (new `billing.portalSession` test).
+2. ~~Propagate plan changes from the webhook~~ — **DONE (2026-10-09,
+   uncommitted).** `PaymentPort.PaymentEvent` gained a `plan` field (added
+   at the end — every existing call site across
+   Stripe/PayPal/Adyen/`ReconciliationService`/tests updated to pass it,
+   `null` where the processor can't tell). `StripePaymentAdapter` now
+   reads the subscription item's Stripe price id on
+   `customer.subscription.updated`/`deleted` and reverse-maps it back to
+   `"monthly"`/`"yearly"` via the existing `priceIds` config (new
+   `planForPriceId` helper); `PayPalPaymentAdapter` does the same for its
+   `plan_id` via `planIds` (`planForPlanId`) — found while fixing Stripe
+   that PayPal's webhook had the identical gap, fixed both rather than
+   leaving an inconsistency for later. `ReconciliationService.resyncStatus`
+   was also silently dropping `ReconciliationCandidate.plan()` on the
+   floor — now threads it through too, since it's the same underlying bug.
+   `BillingService.applyEventEffects` uses `event.plan()` when present,
+   falling back to the stale local value only when the processor didn't
+   supply one. Verified via a new `BillingServiceTest` case
+   (`subscriptionUpdatedEvent_withPlan_overridesStalePlan`) plus the
+   updated `ReconciliationServiceTest` assertion.
+3. ~~Change password~~ — **DONE (2026-10-09, uncommitted).**
+   `POST /api/v1/auth/password` added to `AuthController` (same
+   public-prefix-but-self-checks-the-bearer-token pattern as `/auth/me`;
+   `shared/api-contracts/public-routes.yaml`'s reviewed set and
+   `GatewayPublicRoutesContractTest` updated accordingly). `User.java` got
+   a `changePassword(newHash)` method; `AuthService` (new
+   `ChangePasswordUseCase`) verifies the current password via
+   `PasswordEncoder.matches` before saving the new hash. Frontend: a form
+   on `/account`. **Known gap, found while building this, not silently
+   dropped:** refresh tokens here are stateless JWTs with no DB-backed
+   revocation list at all (`JwtTokenAdapter`/`TokenPort` — confirmed by
+   reading them, not assumed) — logout only clears the cookie
+   client-side, the JWT itself stays valid until it expires. So changing
+   your password today does **not** invalidate another device's existing
+   session; doing that would need a `password_changed_at` column on
+   `users` plus a signature/issuedAt check added to `TokenPort`'s refresh
+   path — a separate, larger follow-up, not bundled into this one.
+   Verified via new `AuthServiceTest`/`AuthControllerTest` cases.
+   **Missed on the first pass, caught live at app startup (not by any
+   test):** `AppConfig` wires each use-case interface as its own `@Bean`
+   method returning a method reference off a throwaway `new AuthService(...)`
+   (e.g. `registerUseCase()` returns `authService(...)::register`) — there
+   is no bean of type `AuthService` itself, so Spring couldn't satisfy
+   `ChangePasswordUseCase` for `AuthController` until a matching
+   `changePasswordUseCase()` `@Bean` method was added the same way. Every
+   test here mocks the use-case interfaces directly (`@MockBean`/`@Mock`),
+   so none of them exercise `AppConfig` — only actually booting the app
+   (or a real `@SpringBootTest` with no mocks, which this module doesn't
+   have) surfaces a missing bean. Fixed (2026-10-09, uncommitted).
+4. ~~Past_due status + failed-renewal handling~~ — **DONE (2026-10-09,
+   uncommitted).** `Subscription.PAST_DUE` + `markPastDue()` added.
+   `StripePaymentAdapter.verifyWebhook` now handles `invoice.payment_failed`
+   (Stripe 2025+ API: the subscription id isn't a direct field on
+   `Invoice` any more — it's
+   `invoice.getParent().getSubscriptionDetails().getSubscription()`,
+   found by reading the SDK source after a first, wrong attempt at
+   `invoice.getSubscription()` failed to compile), mapped to a new
+   `"payment_failed"` `PaymentEvent` type. `BillingService
+   .applyEventEffects` has a case calling `markPastDue()`.
+   `BillingService.Stats` gained a `pastDue` count (admin dashboard JSON
+   gets the field for free via Jackson; no frontend tile added — not
+   asked for). `/billing/me`'s status already passed `getEffectiveStatus()`
+   through generically, so no controller change was needed for it to
+   surface there. Frontend: a red "Your last payment failed" banner on
+   `/account`, pointing at item 1's "Manage billing" for Stripe customers
+   or "contact support" otherwise. Verified via a new `BillingServiceTest`
+   case (`paymentFailedEvent_marksSubscriptionPastDue`).
+5. ~~Decide PayPal/Adyen parity~~ — **DECIDED AND IMPLEMENTED (2026-10-09,
+   uncommitted): Stripe-only for now.** PayPal/Adyen have no hosted portal
+   equivalent to item 1's, so `createPortalSession` returns
+   `Optional.empty()` for both (with a comment pointing at this decision);
+   `/account` shows a plain "contact support" line instead of a button
+   for any active/past_due subscriber whose `paymentProcessor` isn't
+   `"stripe"`. Cancellation for those subscribers stays admin-assisted via
+   the existing `revoke` action — no new endpoint built for them. Revisit
+   if PayPal/Adyen volume ever justifies the custom-endpoint work.
+6. ~~Nav wiring~~ — **DONE (2026-10-09, uncommitted).** `NavBar.tsx` now
+   links `/account` for any authenticated user and `/admin` only when
+   `role === "ADMIN"`. That needed plumbing `role` through end-to-end —
+   `AuthContext`'s `AuthState` didn't track it at all (only
+   token/userId/email), even though the backend's `AuthResponse`/
+   `TokenResponse` always carried it — so `persistAuth`/`clearStorage`/the
+   initial-load effect/`login`/`onTokenRefreshed`/`onSessionExpired` all
+   got the same `role` field added, localStorage key `omyfish_role`.
+   Also added a `Refund` button on `/admin` next to grant/extend-trial/
+   revoke, calling the already-shipped (item H) refund endpoint —
+   `api.admin.refund` added to `lib/api.ts` with the required
+   `Idempotency-Key` header, same pattern as `billing.checkout`.
+   Verified: new `admin.refund` header test.
 
-Verified: nothing yet — not started.
+Full-suite verification for all of the above, run once at the end rather
+than per-item: `mvn test -pl services/identity-service -am` — 69/69 green
+across all 6 test classes (confirmed via a clean, non-incremental build,
+since the incremental compiler initially reported "nothing to compile" and
+silently ran stale test classes against the new `PaymentPort` interface —
+worth remembering for next time). Frontend: `npx tsc --noEmit` clean,
+`npx vitest run` — 8/8 green.
+
+Still open: nothing code-side. The one manual follow-up is the Stripe
+Dashboard Customer Portal configuration noted in item 1 — without it,
+`createPortalSession` will get a real error back from Stripe in any
+environment this is deployed to, sandbox or otherwise.
+untouched so far.

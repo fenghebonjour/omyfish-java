@@ -22,6 +22,13 @@ public interface PaymentPort {
     void setDefaultPaymentMethod(String customerId, String paymentMethodId);
 
     /**
+     * A hosted self-service session (cancel/upgrade/invoice history) for this customer, if the
+     * processor has one. Empty for processors with no portal equivalent (PayPal, Adyen) or when
+     * unconfigured.
+     */
+    Optional<String> createPortalSession(String customerId, String returnUrl);
+
+    /**
      * Full refund when amountCents is null, partial otherwise. Empty if nothing to refund.
      * lastPaymentReference is the processor-specific id of the subscription's last captured
      * payment (e.g. Adyen's pspReference); Stripe/PayPal ignore it and re-derive the latest
@@ -66,7 +73,8 @@ public interface PaymentPort {
         String providerStatus,   // e.g. canceled / unpaid / incomplete_expired / active
         Instant periodEnd,
         String paymentMethodId,  // set for payment_method_attached
-        String paymentReference  // set for payment_captured (e.g. Adyen's pspReference)
+        String paymentReference, // set for payment_captured (e.g. Adyen's pspReference)
+        String plan              // "monthly" | "yearly", when the event's processor can tell; null otherwise
     ) {}
 
     record SubscriptionIntent(

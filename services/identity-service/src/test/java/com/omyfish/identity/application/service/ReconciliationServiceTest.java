@@ -53,7 +53,8 @@ class ReconciliationServiceTest {
         assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_456");
         assertThat(sub.getPaymentProcessor()).isEqualTo("stripe");
         verify(billing).applyEvent(new PaymentEvent(
-            null, "stripe", "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null, null));
+            null, "stripe", "subscription_updated", "cus_123", "sub_456", "active", periodEnd, null, null,
+            "monthly"));
     }
 
     @Test

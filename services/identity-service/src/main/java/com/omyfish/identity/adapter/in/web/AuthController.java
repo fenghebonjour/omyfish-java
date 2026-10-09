@@ -1,6 +1,7 @@
 package com.omyfish.identity.adapter.in.web;
 
 import com.omyfish.identity.adapter.in.web.dto.*;
+import com.omyfish.identity.domain.port.in.ChangePasswordUseCase;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
@@ -35,6 +36,7 @@ public class AuthController {
     private final RefreshTokenUseCase refreshTokenUseCase;
     private final GetCurrentUserUseCase getCurrentUserUseCase;
     private final CreateApiKeyUseCase createApiKeyUseCase;
+    private final ChangePasswordUseCase changePasswordUseCase;
     private final boolean cookieSecure;
 
     public AuthController(
@@ -43,6 +45,7 @@ public class AuthController {
         RefreshTokenUseCase refreshTokenUseCase,
         GetCurrentUserUseCase getCurrentUserUseCase,
         CreateApiKeyUseCase createApiKeyUseCase,
+        ChangePasswordUseCase changePasswordUseCase,
         Environment environment
     ) {
         this.registerUseCase = registerUseCase;
@@ -50,6 +53,7 @@ public class AuthController {
         this.refreshTokenUseCase = refreshTokenUseCase;
         this.getCurrentUserUseCase = getCurrentUserUseCase;
         this.createApiKeyUseCase = createApiKeyUseCase;
+        this.changePasswordUseCase = changePasswordUseCase;
         this.cookieSecure = Arrays.asList(environment.getActiveProfiles()).contains("prod");
     }
 
@@ -133,6 +137,29 @@ public class AuthController {
             return ResponseEntity.ok(new MeResponse(user.userId(), user.email(), user.role()));
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
+        }
+    }
+
+    @PostMapping("/auth/password")
+    public ResponseEntity<Void> changePassword(
+        @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @RequestBody ChangePasswordRequest request
+    ) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing bearer token");
+        }
+        UUID userId;
+        try {
+            userId = getCurrentUserUseCase.me(authHeader.substring(7)).userId();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getMessage());
+        }
+        try {
+            changePasswordUseCase.changePassword(new ChangePasswordUseCase.ChangePasswordCommand(
+                userId, request.currentPassword(), request.newPassword()));
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 

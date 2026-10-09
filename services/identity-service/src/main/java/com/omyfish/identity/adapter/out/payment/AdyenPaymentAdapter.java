@@ -173,6 +173,13 @@ public class AdyenPaymentAdapter implements PaymentPort {
     }
 
     @Override
+    public Optional<String> createPortalSession(String customerId, String returnUrl) {
+        // Adyen has no hosted self-service portal equivalent to Stripe's (BACKLOG.md item J.5)
+        // — cancel/upgrade for Adyen subscribers is admin-assisted for now.
+        return Optional.empty();
+    }
+
+    @Override
     public List<ReconciliationCandidate> listRecentSubscriptions(Instant since) {
         // Not implemented: Adyen isn't live yet (BACKLOG I.6) — add this once it is. It would
         // also need Adyen's own notion of "recent" (it has no subscription object to list;
@@ -234,7 +241,7 @@ public class AdyenPaymentAdapter implements PaymentPort {
             return Optional.of(new PaymentEvent(
                 item.getPspReference(), name(), "payment_captured",
                 customerId, null, null, null, null,
-                item.getPspReference()));
+                item.getPspReference(), null));
         } catch (Exception e) {
             return Optional.empty();
         }

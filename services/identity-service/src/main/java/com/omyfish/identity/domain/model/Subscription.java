@@ -13,6 +13,7 @@ public class Subscription {
     public static final String ACTIVE = "active";
     public static final String CANCELED = "canceled";
     public static final String EXPIRED = "expired";
+    public static final String PAST_DUE = "past_due";
 
     @Id
     private UUID id;
@@ -91,6 +92,12 @@ public class Subscription {
 
     public void cancel() {
         this.status = CANCELED;
+        this.updatedAt = Instant.now();
+    }
+
+    /** A renewal charge failed but the processor is still retrying — access isn't pulled yet. */
+    public void markPastDue() {
+        this.status = PAST_DUE;
         this.updatedAt = Instant.now();
     }
 

@@ -13,6 +13,7 @@ import com.omyfish.identity.application.service.AuthService;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.application.service.PaymentProcessorRegistry;
 import com.omyfish.identity.application.service.ReconciliationService;
+import com.omyfish.identity.domain.port.in.ChangePasswordUseCase;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
@@ -97,6 +98,18 @@ public class AppConfig {
     ) {
         return authService(userRepository, apiKeyRepository, subscriptionRepository,
             passwordEncoder, tokenPort)::createApiKey;
+    }
+
+    @Bean
+    public ChangePasswordUseCase changePasswordUseCase(
+        UserRepositoryAdapter userRepository,
+        ApiKeyRepositoryAdapter apiKeyRepository,
+        SubscriptionRepositoryAdapter subscriptionRepository,
+        PasswordEncoder passwordEncoder,
+        JwtTokenAdapter tokenPort
+    ) {
+        return authService(userRepository, apiKeyRepository, subscriptionRepository,
+            passwordEncoder, tokenPort)::changePassword;
     }
 
     @Bean

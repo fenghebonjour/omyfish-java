@@ -221,8 +221,9 @@ public class BillingService {
                     || "incomplete_expired".equals(event.providerStatus())) {
                     sub.cancel();
                 } else {
-                    sub.activate(sub.getPlan() != null ? sub.getPlan() : "monthly",
-                        event.periodEnd(), null, event.subscriptionId());
+                    String plan = event.plan() != null ? event.plan()
+                        : (sub.getPlan() != null ? sub.getPlan() : "monthly");
+                    sub.activate(plan, event.periodEnd(), null, event.subscriptionId());
                 }
                 subscriptions.save(sub);
                 return true;
@@ -241,10 +242,31 @@ public class BillingService {
                 subscriptions.save(sub);
                 return true;
             }
+            case "payment_failed" -> {
+                Optional<Subscription> found =
+                    subscriptions.findByStripeCustomerId(event.customerId());
+                if (found.isEmpty()) return false;
+                Subscription sub = found.get();
+                sub.markPastDue();
+                subscriptions.save(sub);
+                return true;
+            }
             default -> {
                 return false;
             }
         }
+    }
+
+    /** Empty when the subscription's processor has no portal (PayPal/Adyen) or isn't configured. */
+    public Optional<String> createPortalSession(UUID userId, String returnUrl) {
+        Subscription sub = subscriptions.findByUserId(userId)
+            .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
+        if (sub.getStripeCustomerId() == null) {
+            throw new IllegalArgumentException("No payment processor customer on file");
+        }
+        PaymentPort processor = processors.byName(
+            sub.getPaymentProcessor() != null ? sub.getPaymentProcessor() : "stripe");
+        return processor.createPortalSession(sub.getStripeCustomerId(), returnUrl);
     }
 
     // ── Admin operations ──────────────────────────────────────────────────────
@@ -259,6 +281,7 @@ public class BillingService {
         long active = count(all, Subscription.ACTIVE);
         long canceled = count(all, Subscription.CANCELED);
         long expired = count(all, Subscription.EXPIRED);
+        long pastDue = count(all, Subscription.PAST_DUE);
         long monthly = all.stream().filter(s ->
             Subscription.ACTIVE.equals(s.getEffectiveStatus())
                 && "monthly".equals(s.getPlan())).count();
@@ -266,7 +289,7 @@ public class BillingService {
             Subscription.ACTIVE.equals(s.getEffectiveStatus())
                 && "yearly".equals(s.getPlan())).count();
         double mrr = monthly * MONTHLY_CAD + yearly * YEARLY_CAD / 12;
-        return new Stats(trialing, active, canceled, expired, monthly, yearly,
+        return new Stats(trialing, active, canceled, expired, pastDue, monthly, yearly,
             Math.round(mrr * 100) / 100.0);
     }
 
@@ -293,6 +316,6 @@ public class BillingService {
         return all.stream().filter(s -> status.equals(s.getEffectiveStatus())).count();
     }
 
-    public record Stats(long trialing, long active, long canceled, long expired,
+    public record Stats(long trialing, long active, long canceled, long expired, long pastDue,
                         long activeMonthly, long activeYearly, double mrrCad) {}
 }

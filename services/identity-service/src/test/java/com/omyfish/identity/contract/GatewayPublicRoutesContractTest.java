@@ -43,6 +43,7 @@ class GatewayPublicRoutesContractTest {
         "/api/v1/auth/refresh",
         "/api/v1/auth/logout",
         "/api/v1/auth/me",
+        "/api/v1/auth/password",
         "/api/v1/auth/health",
         "/api/v1/billing/webhook/{processor}"
     );

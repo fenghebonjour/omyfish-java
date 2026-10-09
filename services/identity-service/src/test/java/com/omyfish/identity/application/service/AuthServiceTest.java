@@ -1,6 +1,7 @@
 package com.omyfish.identity.application.service;
 
 import com.omyfish.identity.domain.model.User;
+import com.omyfish.identity.domain.port.in.ChangePasswordUseCase.ChangePasswordCommand;
 import com.omyfish.identity.domain.port.in.LoginUseCase.LoginCommand;
 import com.omyfish.identity.domain.port.in.RegisterUseCase.RegisterCommand;
 import com.omyfish.identity.domain.model.Subscription;
@@ -118,5 +119,43 @@ class AuthServiceTest {
         assertThatThrownBy(() ->
             authService.login(new LoginCommand("nobody@example.com", "any"))
         ).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void changePassword_correctCurrentPassword_savesNewHash() {
+        User user = User.create("alice@example.com", "oldHash", "USER");
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("old", "oldHash")).thenReturn(true);
+        when(passwordEncoder.encode("newpass123")).thenReturn("newHash");
+
+        authService.changePassword(new ChangePasswordCommand(user.getId(), "old", "newpass123"));
+
+        assertThat(user.getPasswordHash()).isEqualTo("newHash");
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void changePassword_wrongCurrentPassword_throwsIllegalArgumentAndDoesNotSave() {
+        User user = User.create("alice@example.com", "oldHash", "USER");
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("wrong", "oldHash")).thenReturn(false);
+
+        assertThatThrownBy(() ->
+            authService.changePassword(new ChangePasswordCommand(user.getId(), "wrong", "newpass123"))
+        ).isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("incorrect");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void changePassword_unknownUser_throwsIllegalArgument() {
+        UUID userId = UUID.randomUUID();
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+            authService.changePassword(new ChangePasswordCommand(userId, "old", "newpass123"))
+        ).isInstanceOf(IllegalArgumentException.class)
+         .hasMessageContaining("not found");
     }
 }

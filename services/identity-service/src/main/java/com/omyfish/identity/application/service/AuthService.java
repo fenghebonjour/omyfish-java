@@ -2,6 +2,7 @@ package com.omyfish.identity.application.service;
 
 import com.omyfish.identity.domain.model.ApiKey;
 import com.omyfish.identity.domain.model.User;
+import com.omyfish.identity.domain.port.in.ChangePasswordUseCase;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.LoginUseCase;
@@ -18,7 +19,8 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 public class AuthService implements
-    RegisterUseCase, LoginUseCase, RefreshTokenUseCase, GetCurrentUserUseCase, CreateApiKeyUseCase {
+    RegisterUseCase, LoginUseCase, RefreshTokenUseCase, GetCurrentUserUseCase, CreateApiKeyUseCase,
+    ChangePasswordUseCase {
 
     private final UserRepository userRepository;
     private final ApiKeyRepository apiKeyRepository;
@@ -96,5 +98,16 @@ public class AuthService implements
         ApiKey apiKey = ApiKey.create(command.userId(), keyHash, command.name());
         apiKey = apiKeyRepository.save(apiKey);
         return new CreateApiKeyResult(apiKey.getId(), plainKey, apiKey.getName());
+    }
+
+    @Override
+    public void changePassword(ChangePasswordCommand command) {
+        User user = userRepository.findById(command.userId())
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!passwordEncoder.matches(command.currentPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        user.changePassword(passwordEncoder.encode(command.newPassword()));
+        userRepository.save(user);
     }
 }

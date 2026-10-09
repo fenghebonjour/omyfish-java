@@ -9,6 +9,7 @@ import com.stripe.model.InvoicePayment;
 import com.stripe.model.Refund;
 import com.stripe.model.SetupIntent;
 import com.stripe.model.Subscription;
+import com.stripe.model.billingportal.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.CustomerCreateParams;
@@ -19,6 +20,7 @@ import com.stripe.param.RefundCreateParams;
 import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
 import com.stripe.param.SubscriptionListParams;
+import com.stripe.param.billingportal.SessionCreateParams;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -151,6 +153,33 @@ public class StripePaymentAdapter implements PaymentPort {
         }
     }
 
+    @Override
+    public Optional<String> createPortalSession(String customerId, String returnUrl) {
+        if (secretKey.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            RequestOptions options = baseOptions().build();
+            SessionCreateParams params = SessionCreateParams.builder()
+                .setCustomer(customerId)
+                .setReturnUrl(returnUrl)
+                .build();
+            Session session = Session.create(params, options);
+            return Optional.of(session.getUrl());
+        } catch (Exception e) {
+            throw new IllegalStateException("Stripe portal session failed: " + e.getMessage(), e);
+        }
+    }
+
+    /** Reverses {@link #priceIds} to recover our plan name from a Stripe price id on a webhook event. */
+    private String planForPriceId(String priceId) {
+        if (priceId == null) return null;
+        return priceIds.entrySet().stream()
+            .filter(e -> e.getValue().equals(priceId))
+            .map(Map.Entry::getKey)
+            .findFirst().orElse(null);
+    }
+
     private String findOrCreateCustomer(UUID userId, String email, RequestOptions options)
         throws Exception {
         Customer existing = Customer.list(
@@ -267,16 +296,16 @@ public class StripePaymentAdapter implements PaymentPort {
                 Subscription sub = (Subscription) event.getDataObjectDeserializer()
                     .getObject().orElse(null);
                 if (sub == null) yield Optional.empty();
-                Long periodEnd = sub.getItems() != null
-                    && !sub.getItems().getData().isEmpty()
-                    ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
+                boolean hasItems = sub.getItems() != null && !sub.getItems().getData().isEmpty();
+                Long periodEnd = hasItems ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
+                String priceId = hasItems ? sub.getItems().getData().get(0).getPrice().getId() : null;
                 yield Optional.of(new PaymentEvent(
                     event.getId(), name(),
                     event.getType().endsWith("deleted")
                         ? "subscription_deleted" : "subscription_updated",
                     sub.getCustomer(), sub.getId(), sub.getStatus(),
                     periodEnd == null ? null : Instant.ofEpochSecond(periodEnd),
-                    null, null));
+                    null, null, planForPriceId(priceId)));
             }
             case "setup_intent.succeeded" -> {
                 SetupIntent setupIntent = (SetupIntent) event.getDataObjectDeserializer()
@@ -285,7 +314,19 @@ public class StripePaymentAdapter implements PaymentPort {
                     event.getId(), name(),
                     "payment_method_attached",
                     setupIntent.getCustomer(), null, null, null,
-                    setupIntent.getPaymentMethod(), null));
+                    setupIntent.getPaymentMethod(), null, null));
+            }
+            case "invoice.payment_failed" -> {
+                Invoice invoice = (Invoice) event.getDataObjectDeserializer()
+                    .getObject().orElse(null);
+                String subscriptionId = invoice == null || invoice.getParent() == null
+                    || invoice.getParent().getSubscriptionDetails() == null ? null
+                    : invoice.getParent().getSubscriptionDetails().getSubscription();
+                yield subscriptionId == null ? Optional.empty() : Optional.of(new PaymentEvent(
+                    event.getId(), name(),
+                    "payment_failed",
+                    invoice.getCustomer(), subscriptionId, null, null,
+                    null, null, null));
             }
             default -> Optional.empty();
         };

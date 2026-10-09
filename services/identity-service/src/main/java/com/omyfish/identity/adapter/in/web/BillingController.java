@@ -46,6 +46,22 @@ public class BillingController {
         return SubscriptionResponse.from(billing.mySubscription(requireUser(authHeader)));
     }
 
+    @PostMapping("/portal-session")
+    public Map<String, String> portalSession(
+        @RequestHeader(value = "Authorization", required = false) String authHeader,
+        @RequestBody PortalSessionRequest request
+    ) {
+        UUID userId = requireUser(authHeader);
+        try {
+            String url = billing.createPortalSession(userId, request.returnUrl())
+                .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "No self-service billing portal for this account"));
+            return Map.of("url", url);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        }
+    }
+
     @PostMapping("/checkout")
     public Map<String, String> checkout(
         @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -119,11 +135,14 @@ public class BillingController {
 
     record CheckoutRequest(String plan) {}
 
+    record PortalSessionRequest(String returnUrl) {}
+
     record SubscriptionResponse(String status, String plan,
-                                Instant trialEnd, Instant currentPeriodEnd) {
+                                Instant trialEnd, Instant currentPeriodEnd, String paymentProcessor) {
         static SubscriptionResponse from(Subscription s) {
             return new SubscriptionResponse(
-                s.getEffectiveStatus(), s.getPlan(), s.getTrialEnd(), s.getCurrentPeriodEnd());
+                s.getEffectiveStatus(), s.getPlan(), s.getTrialEnd(), s.getCurrentPeriodEnd(),
+                s.getPaymentProcessor());
         }
     }
 }

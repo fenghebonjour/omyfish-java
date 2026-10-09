@@ -1,5 +1,6 @@
 package com.omyfish.identity.adapter.in.web;
 
+import com.omyfish.identity.domain.port.in.ChangePasswordUseCase;
 import com.omyfish.identity.domain.port.in.CreateApiKeyUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase.CurrentUser;
@@ -37,6 +38,7 @@ class AuthControllerTest {
     @MockBean RefreshTokenUseCase refreshTokenUseCase;
     @MockBean GetCurrentUserUseCase getCurrentUserUseCase;
     @MockBean CreateApiKeyUseCase createApiKeyUseCase;
+    @MockBean ChangePasswordUseCase changePasswordUseCase;
 
     private static final String REGISTER_BODY =
         "{\"email\":\"alice@example.com\",\"password\":\"password123\"}";
@@ -148,5 +150,41 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(LOGIN_BODY_WRONG))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changePassword_validRequest_returnsOk() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(getCurrentUserUseCase.me("jwt.token.here"))
+            .thenReturn(new CurrentUser(userId, "alice@example.com", "USER"));
+
+        mvc.perform(post("/api/v1/auth/password")
+                .header("Authorization", "Bearer jwt.token.here")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"old\",\"newPassword\":\"newpass123\"}"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void changePassword_missingHeader_returnsUnauthorized() throws Exception {
+        mvc.perform(post("/api/v1/auth/password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"old\",\"newPassword\":\"newpass123\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void changePassword_wrongCurrentPassword_returnsBadRequest() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(getCurrentUserUseCase.me("jwt.token.here"))
+            .thenReturn(new CurrentUser(userId, "alice@example.com", "USER"));
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("Current password is incorrect"))
+            .when(changePasswordUseCase).changePassword(any());
+
+        mvc.perform(post("/api/v1/auth/password")
+                .header("Authorization", "Bearer jwt.token.here")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"currentPassword\":\"wrong\",\"newPassword\":\"newpass123\"}"))
+            .andExpect(status().isBadRequest());
     }
 }

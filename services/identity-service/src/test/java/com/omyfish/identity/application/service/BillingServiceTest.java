@@ -223,7 +223,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_1", "stripe", "subscription_updated", "cus_123", "sub_456", "incomplete_expired",
-            null, null, null));
+            null, null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -239,7 +239,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_2", "stripe", "subscription_deleted", "cus_123", "sub_456", null,
-            null, null, null));
+            null, null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -256,10 +256,24 @@ class BillingServiceTest {
 
         billing.applyEvent(new PaymentEvent(
             "evt_3", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
-            periodEnd, null, null));
+            periodEnd, null, null, null));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
+    }
+
+    @Test
+    void subscriptionUpdatedEvent_withPlan_overridesStalePlan() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_456");
+        when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        billing.applyEvent(new PaymentEvent(
+            "evt_upgrade", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
+            null, null, null, "yearly"));
+
+        assertThat(sub.getPlan()).isEqualTo("yearly");
     }
 
     @Test
@@ -268,8 +282,23 @@ class BillingServiceTest {
 
         assertThat(billing.applyEvent(new PaymentEvent(
             "evt_4", "stripe", "subscription_updated", "cus_ghost", null, "active",
-            null, null, null))).isFalse();
+            null, null, null, null))).isFalse();
         verify(processedWebhookEvents, never()).save(any());
+    }
+
+    @Test
+    void paymentFailedEvent_marksSubscriptionPastDue() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_456");
+        when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean handled = billing.applyEvent(new PaymentEvent(
+            "evt_failed", "stripe", "payment_failed", "cus_123", "sub_456", null,
+            null, null, null, null));
+
+        assertThat(handled).isTrue();
+        assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.PAST_DUE);
     }
 
     @Test
@@ -312,7 +341,7 @@ class BillingServiceTest {
     void applyEvent_paymentMethodAttached_setsDefaultOnPaymentPort() {
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_5", "stripe", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null));
+            null, "pm_456", null, null));
 
         assertThat(handled).isTrue();
         verify(payments).setDefaultPaymentMethod("cus_123", "pm_456");
@@ -325,7 +354,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_paypal", "paypal", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null));
+            null, "pm_456", null, null));
 
         assertThat(handled).isTrue();
         verify(paypalPayments).setDefaultPaymentMethod("cus_123", "pm_456");
@@ -338,7 +367,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_dup", "stripe", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null));
+            null, "pm_456", null, null));
 
         assertThat(handled).isTrue();
         verifyNoInteractions(payments);
@@ -469,5 +498,49 @@ class BillingServiceTest {
 
         assertThat(granted.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
         assertThat(granted.getCurrentPeriodEnd()).isAfter(Instant.now());
+    }
+
+    @Test
+    void createPortalSession_delegatesToPaymentPort() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachProcessor("stripe", "cus_123", "sub_456");
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(payments.createPortalSession("cus_123", "https://app.example.com/account"))
+            .thenReturn(Optional.of("https://billing.stripe.com/session/abc"));
+
+        Optional<String> url = billing.createPortalSession(USER, "https://app.example.com/account");
+
+        assertThat(url).contains("https://billing.stripe.com/session/abc");
+    }
+
+    @Test
+    void createPortalSession_noSubscription_throws() {
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> billing.createPortalSession(USER, "https://app.example.com/account"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createPortalSession_noProcessorCustomerId_throws() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+
+        assertThatThrownBy(() -> billing.createPortalSession(USER, "https://app.example.com/account"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createPortalSession_processorHasNoPortal_returnsEmpty() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.attachProcessor("paypal", "payer_123", "sub_456");
+        when(subscriptions.findByUserId(USER)).thenReturn(Optional.of(sub));
+        when(processors.byName("paypal")).thenReturn(paypalPayments);
+        when(paypalPayments.createPortalSession("payer_123", "https://app.example.com/account"))
+            .thenReturn(Optional.empty());
+
+        Optional<String> url = billing.createPortalSession(USER, "https://app.example.com/account");
+
+        assertThat(url).isEmpty();
     }
 }

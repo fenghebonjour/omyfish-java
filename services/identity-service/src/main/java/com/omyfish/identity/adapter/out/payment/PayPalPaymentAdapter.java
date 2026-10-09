@@ -169,6 +169,13 @@ public class PayPalPaymentAdapter implements PaymentPort {
     }
 
     @Override
+    public Optional<String> createPortalSession(String customerId, String returnUrl) {
+        // PayPal has no hosted self-service portal equivalent to Stripe's (BACKLOG.md item J.5)
+        // — cancel/upgrade for PayPal subscribers is admin-assisted for now.
+        return Optional.empty();
+    }
+
+    @Override
     public List<ReconciliationCandidate> listRecentSubscriptions(Instant since) {
         // Not implemented: PayPal isn't live yet (BACKLOG I.6) — add this once it is.
         return List.of();
@@ -265,18 +272,18 @@ public class PayPalPaymentAdapter implements PaymentPort {
                 textOrNull(resource.path("id")),
                 textOrNull(resource.path("status")),
                 parseInstant(textOrNull(resource.path("billing_info").path("next_billing_time"))),
-                null, null));
+                null, null, planForPlanId(textOrNull(resource.path("plan_id")))));
             case "BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED",
                 "BILLING.SUBSCRIPTION.SUSPENDED" -> Optional.of(new PaymentEvent(
                 eventId, name(), "subscription_deleted",
                 textOrNull(resource.path("subscriber").path("payer_id")),
                 textOrNull(resource.path("id")),
-                null, null, null, null));
+                null, null, null, null, null));
             case "VAULT.PAYMENT-TOKEN.CREATED" -> Optional.of(new PaymentEvent(
                 eventId, name(), "payment_method_attached",
                 textOrNull(resource.path("customer").path("id")),
                 null, null, null,
-                textOrNull(resource.path("id")), null));
+                textOrNull(resource.path("id")), null, null));
             default -> Optional.empty();
         };
     }
@@ -286,6 +293,15 @@ public class PayPalPaymentAdapter implements PaymentPort {
         return links.stream()
             .filter(l -> "approve".equals(l.rel()))
             .map(Link::href)
+            .findFirst().orElse(null);
+    }
+
+    /** Reverses {@link #planIds} to recover our plan name from a PayPal plan id on a webhook event. */
+    private String planForPlanId(String planId) {
+        if (planId == null) return null;
+        return planIds.entrySet().stream()
+            .filter(e -> e.getValue().equals(planId))
+            .map(Map.Entry::getKey)
             .findFirst().orElse(null);
     }
 
