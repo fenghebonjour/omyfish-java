@@ -237,10 +237,32 @@ POST /api/v1/auth/refresh   → { token, userId, email, role }
 POST /api/v1/auth/logout
 POST /api/v1/users/{userId}/api-keys  → { keyId, plainKey, name }
 GET  /api/v1/auth/me
+POST /api/v1/auth/password   { currentPassword, newPassword }
 ```
 The refresh token travels only as an httpOnly, `SameSite=Strict` cookie
 scoped to `/api/v1/auth` (never in the request/response body) — see
 `docs/WEAKNESS_AUDIT.md` §1.3.
+
+### identity-service — billing
+```
+GET  /api/v1/billing/me                     → { status, plan, trialEnd, currentPeriodEnd, paymentProcessor }
+POST /api/v1/billing/checkout               { plan } + Idempotency-Key header → { processor, clientSecret, subscriptionId, status }
+POST /api/v1/billing/portal-session         { returnUrl } → { url }   (Stripe only — PayPal/Adyen subscribers get a 503, no hosted portal equivalent)
+POST /api/v1/billing/payment-method/setup   → { processor, clientSecret, customerId }
+POST /api/v1/billing/webhook/{processor}    (Stripe/PayPal/Adyen webhook ingestion)
+
+GET  /api/v1/admin/stats
+GET  /api/v1/admin/subscriptions
+POST /api/v1/admin/subscriptions/{userId}/grant
+POST /api/v1/admin/subscriptions/{userId}/revoke
+POST /api/v1/admin/subscriptions/{userId}/refund
+POST /api/v1/admin/subscriptions/{userId}/extend-trial
+POST /api/v1/admin/subscriptions/reconcile
+```
+`status` includes `past_due`, set when a Stripe `invoice.payment_failed`
+webhook fires. The frontend's `/account` page shows a "Manage billing"
+button (→ portal-session) for Stripe subscribers (active or past_due) and
+a "contact support" line for PayPal/Adyen subscribers instead.
 
 ## Security Architecture
 
