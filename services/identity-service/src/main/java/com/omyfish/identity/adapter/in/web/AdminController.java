@@ -3,6 +3,7 @@ package com.omyfish.identity.adapter.in.web;
 import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.application.service.ReconciliationService;
 import com.omyfish.identity.domain.model.Subscription;
+import com.omyfish.identity.domain.port.in.AdminBillingUseCase;
 import com.omyfish.identity.domain.port.in.GetCurrentUserUseCase;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.UserRepository;
@@ -20,12 +21,12 @@ import java.util.UUID;
 @RequestMapping("/api/v1/admin")
 public class AdminController {
 
-    private final BillingService billing;
+    private final AdminBillingUseCase billing;
     private final ReconciliationService reconciliation;
     private final UserRepository users;
     private final GetCurrentUserUseCase currentUser;
 
-    public AdminController(BillingService billing, ReconciliationService reconciliation,
+    public AdminController(AdminBillingUseCase billing, ReconciliationService reconciliation,
                            UserRepository users, GetCurrentUserUseCase currentUser) {
         this.billing = billing;
         this.reconciliation = reconciliation;
