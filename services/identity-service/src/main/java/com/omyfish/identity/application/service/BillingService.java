@@ -237,6 +237,7 @@ public class BillingService {
                     String plan = event.plan() != null ? event.plan()
                         : (sub.getPlan() != null ? sub.getPlan() : "monthly");
                     sub.activate(plan, event.periodEnd(), null, event.subscriptionId());
+                    sub.setCancelAtPeriodEnd(Boolean.TRUE.equals(event.cancelAtPeriodEnd()));
                 }
                 subscriptions.save(sub);
                 return true;

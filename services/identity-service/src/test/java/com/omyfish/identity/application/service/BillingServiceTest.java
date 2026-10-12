@@ -274,7 +274,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_1", "stripe", "subscription_updated", "cus_123", "sub_456", "incomplete_expired",
-            null, null, null, null));
+            null, null, null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -290,7 +290,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_2", "stripe", "subscription_deleted", "cus_123", "sub_456", null,
-            null, null, null, null));
+            null, null, null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.CANCELED);
@@ -307,7 +307,7 @@ class BillingServiceTest {
 
         billing.applyEvent(new PaymentEvent(
             "evt_3", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
-            periodEnd, null, null, null));
+            periodEnd, null, null, null, null));
 
         assertThat(sub.getCurrentPeriodEnd()).isEqualTo(periodEnd);
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
@@ -322,9 +322,40 @@ class BillingServiceTest {
 
         billing.applyEvent(new PaymentEvent(
             "evt_upgrade", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
-            null, null, null, "yearly"));
+            null, null, null, "yearly", null));
 
         assertThat(sub.getPlan()).isEqualTo("yearly");
+    }
+
+    @Test
+    void subscriptionUpdatedEvent_cancelAtPeriodEnd_staysActiveButFlagsPendingCancellation() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_456");
+        when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        Instant periodEnd = Instant.now().plusSeconds(30 * 86400);
+
+        billing.applyEvent(new PaymentEvent(
+            "evt_cancel_scheduled", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
+            periodEnd, null, null, null, true));
+
+        assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.ACTIVE);
+        assertThat(sub.isCancelAtPeriodEnd()).isTrue();
+    }
+
+    @Test
+    void subscriptionUpdatedEvent_resumed_clearsPendingCancellation() {
+        Subscription sub = Subscription.startTrial(USER, 7);
+        sub.activate("monthly", null, "cus_123", "sub_456");
+        sub.setCancelAtPeriodEnd(true);
+        when(subscriptions.findByStripeCustomerId("cus_123")).thenReturn(Optional.of(sub));
+        when(subscriptions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        billing.applyEvent(new PaymentEvent(
+            "evt_resumed", "stripe", "subscription_updated", "cus_123", "sub_456", "active",
+            null, null, null, null, false));
+
+        assertThat(sub.isCancelAtPeriodEnd()).isFalse();
     }
 
     @Test
@@ -333,7 +364,7 @@ class BillingServiceTest {
 
         assertThat(billing.applyEvent(new PaymentEvent(
             "evt_4", "stripe", "subscription_updated", "cus_ghost", null, "active",
-            null, null, null, null))).isFalse();
+            null, null, null, null, null))).isFalse();
         verify(processedWebhookEvents, never()).save(any());
     }
 
@@ -346,7 +377,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_failed", "stripe", "payment_failed", "cus_123", "sub_456", null,
-            null, null, null, null));
+            null, null, null, null, null));
 
         assertThat(handled).isTrue();
         assertThat(sub.getEffectiveStatus()).isEqualTo(Subscription.PAST_DUE);
@@ -392,7 +423,7 @@ class BillingServiceTest {
     void applyEvent_paymentMethodAttached_setsDefaultOnPaymentPort() {
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_5", "stripe", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null, null));
+            null, "pm_456", null, null, null));
 
         assertThat(handled).isTrue();
         verify(payments).setDefaultPaymentMethod("cus_123", "pm_456");
@@ -405,7 +436,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_paypal", "paypal", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null, null));
+            null, "pm_456", null, null, null));
 
         assertThat(handled).isTrue();
         verify(paypalPayments).setDefaultPaymentMethod("cus_123", "pm_456");
@@ -418,7 +449,7 @@ class BillingServiceTest {
 
         boolean handled = billing.applyEvent(new PaymentEvent(
             "evt_dup", "stripe", "payment_method_attached", "cus_123", null, null,
-            null, "pm_456", null, null));
+            null, "pm_456", null, null, null));
 
         assertThat(handled).isTrue();
         verifyNoInteractions(payments);

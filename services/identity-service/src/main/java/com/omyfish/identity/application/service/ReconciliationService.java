@@ -93,7 +93,8 @@ public class ReconciliationService {
     private void resyncStatus(ReconciliationCandidate c) {
         billing.applyEvent(new PaymentEvent(
             null, c.processor(), "subscription_updated",
-            c.customerId(), c.subscriptionId(), c.providerStatus(), c.periodEnd(), null, null, c.plan()));
+            c.customerId(), c.subscriptionId(), c.providerStatus(), c.periodEnd(), null, null,
+            c.plan(), null));
     }
 
     public record ReconciliationResult(int checked, List<String> repaired, List<String> errors) {}

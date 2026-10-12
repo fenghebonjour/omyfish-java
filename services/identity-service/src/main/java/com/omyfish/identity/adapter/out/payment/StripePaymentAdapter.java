@@ -1,6 +1,7 @@
 package com.omyfish.identity.adapter.out.payment;
 
 import com.omyfish.identity.domain.port.out.PaymentPort;
+import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Customer;
 import com.stripe.model.Event;
@@ -8,6 +9,7 @@ import com.stripe.model.Invoice;
 import com.stripe.model.InvoicePayment;
 import com.stripe.model.Refund;
 import com.stripe.model.SetupIntent;
+import com.stripe.model.StripeObject;
 import com.stripe.model.Subscription;
 import com.stripe.model.billingportal.Session;
 import com.stripe.net.RequestOptions;
@@ -21,6 +23,8 @@ import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
 import com.stripe.param.SubscriptionListParams;
 import com.stripe.param.billingportal.SessionCreateParams;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -33,6 +37,8 @@ import java.util.UUID;
 
 @Component
 public class StripePaymentAdapter implements PaymentPort {
+
+    private static final Logger log = LoggerFactory.getLogger(StripePaymentAdapter.class);
 
     // Same timeout discipline as AIServiceAdapter's WebClient fix (WEAKNESS_AUDIT.md §2.1) — a
     // slow (not down) Stripe must not hang a request indefinitely. No retries added: a failed
@@ -293,8 +299,7 @@ public class StripePaymentAdapter implements PaymentPort {
 
         return switch (event.getType()) {
             case "customer.subscription.updated", "customer.subscription.deleted" -> {
-                Subscription sub = (Subscription) event.getDataObjectDeserializer()
-                    .getObject().orElse(null);
+                Subscription sub = deserializeEventObject(event, Subscription.class);
                 if (sub == null) yield Optional.empty();
                 boolean hasItems = sub.getItems() != null && !sub.getItems().getData().isEmpty();
                 Long periodEnd = hasItems ? sub.getItems().getData().get(0).getCurrentPeriodEnd() : null;
@@ -305,20 +310,18 @@ public class StripePaymentAdapter implements PaymentPort {
                         ? "subscription_deleted" : "subscription_updated",
                     sub.getCustomer(), sub.getId(), sub.getStatus(),
                     periodEnd == null ? null : Instant.ofEpochSecond(periodEnd),
-                    null, null, planForPriceId(priceId)));
+                    null, null, planForPriceId(priceId), sub.getCancelAtPeriodEnd()));
             }
             case "setup_intent.succeeded" -> {
-                SetupIntent setupIntent = (SetupIntent) event.getDataObjectDeserializer()
-                    .getObject().orElse(null);
+                SetupIntent setupIntent = deserializeEventObject(event, SetupIntent.class);
                 yield setupIntent == null ? Optional.empty() : Optional.of(new PaymentEvent(
                     event.getId(), name(),
                     "payment_method_attached",
                     setupIntent.getCustomer(), null, null, null,
-                    setupIntent.getPaymentMethod(), null, null));
+                    setupIntent.getPaymentMethod(), null, null, null));
             }
             case "invoice.payment_failed" -> {
-                Invoice invoice = (Invoice) event.getDataObjectDeserializer()
-                    .getObject().orElse(null);
+                Invoice invoice = deserializeEventObject(event, Invoice.class);
                 String subscriptionId = invoice == null || invoice.getParent() == null
                     || invoice.getParent().getSubscriptionDetails() == null ? null
                     : invoice.getParent().getSubscriptionDetails().getSubscription();
@@ -326,9 +329,30 @@ public class StripePaymentAdapter implements PaymentPort {
                     event.getId(), name(),
                     "payment_failed",
                     invoice.getCustomer(), subscriptionId, null, null,
-                    null, null, null));
+                    null, null, null, null));
             }
             default -> Optional.empty();
         };
+    }
+
+    // getObject() comes back empty whenever the event's api_version doesn't match this SDK's
+    // compiled version (BACKLOG item L) — common in sandboxes, not just malformed payloads.
+    // deserializeUnsafe() ignores that version check; it only fails for a genuinely incompatible
+    // schema, which EventDataObjectDeserializationException still catches below.
+    private <T extends StripeObject> T deserializeEventObject(Event event, Class<T> type) {
+        Optional<StripeObject> safe = event.getDataObjectDeserializer().getObject();
+        if (safe.isPresent()) {
+            return type.cast(safe.get());
+        }
+        log.warn("Stripe webhook {} ({}): getObject() returned empty — likely event api_version "
+                + "mismatch against the stripe-java SDK's compiled version (BACKLOG item L); "
+                + "falling back to deserializeUnsafe()", event.getId(), event.getType());
+        try {
+            return type.cast(event.getDataObjectDeserializer().deserializeUnsafe());
+        } catch (EventDataObjectDeserializationException e) {
+            log.warn("Stripe webhook {} ({}): deserializeUnsafe() also failed: {}",
+                    event.getId(), event.getType(), e.getMessage());
+            return null;
+        }
     }
 }

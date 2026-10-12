@@ -241,7 +241,7 @@ public class AdyenPaymentAdapter implements PaymentPort {
             return Optional.of(new PaymentEvent(
                 item.getPspReference(), name(), "payment_captured",
                 customerId, null, null, null, null,
-                item.getPspReference(), null));
+                item.getPspReference(), null, null));
         } catch (Exception e) {
             return Optional.empty();
         }

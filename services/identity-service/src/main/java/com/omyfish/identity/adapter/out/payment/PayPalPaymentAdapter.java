@@ -272,18 +272,18 @@ public class PayPalPaymentAdapter implements PaymentPort {
                 textOrNull(resource.path("id")),
                 textOrNull(resource.path("status")),
                 parseInstant(textOrNull(resource.path("billing_info").path("next_billing_time"))),
-                null, null, planForPlanId(textOrNull(resource.path("plan_id")))));
+                null, null, planForPlanId(textOrNull(resource.path("plan_id"))), null));
             case "BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED",
                 "BILLING.SUBSCRIPTION.SUSPENDED" -> Optional.of(new PaymentEvent(
                 eventId, name(), "subscription_deleted",
                 textOrNull(resource.path("subscriber").path("payer_id")),
                 textOrNull(resource.path("id")),
-                null, null, null, null, null));
+                null, null, null, null, null, null));
             case "VAULT.PAYMENT-TOKEN.CREATED" -> Optional.of(new PaymentEvent(
                 eventId, name(), "payment_method_attached",
                 textOrNull(resource.path("customer").path("id")),
                 null, null, null,
-                textOrNull(resource.path("id")), null, null));
+                textOrNull(resource.path("id")), null, null, null));
             default -> Optional.empty();
         };
     }

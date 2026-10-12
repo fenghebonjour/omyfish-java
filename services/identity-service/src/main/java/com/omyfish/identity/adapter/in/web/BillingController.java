@@ -140,11 +140,12 @@ public class BillingController {
     record PortalSessionRequest(String returnUrl) {}
 
     record SubscriptionResponse(String status, String plan,
-                                Instant trialEnd, Instant currentPeriodEnd, String paymentProcessor) {
+                                Instant trialEnd, Instant currentPeriodEnd, String paymentProcessor,
+                                boolean cancelAtPeriodEnd) {
         static SubscriptionResponse from(Subscription s) {
             return new SubscriptionResponse(
                 s.getEffectiveStatus(), s.getPlan(), s.getTrialEnd(), s.getCurrentPeriodEnd(),
-                s.getPaymentProcessor());
+                s.getPaymentProcessor(), s.isCancelAtPeriodEnd());
         }
     }
 }

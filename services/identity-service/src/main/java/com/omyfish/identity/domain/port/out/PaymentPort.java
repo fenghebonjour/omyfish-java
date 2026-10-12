@@ -74,7 +74,8 @@ public interface PaymentPort {
         Instant periodEnd,
         String paymentMethodId,  // set for payment_method_attached
         String paymentReference, // set for payment_captured (e.g. Adyen's pspReference)
-        String plan              // "monthly" | "yearly", when the event's processor can tell; null otherwise
+        String plan,             // "monthly" | "yearly", when the event's processor can tell; null otherwise
+        Boolean cancelAtPeriodEnd // subscription_updated/deleted only; null when the processor can't tell
     ) {}
 
     record SubscriptionIntent(

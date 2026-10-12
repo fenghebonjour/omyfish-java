@@ -35,6 +35,7 @@ public class Subscription {
     private String stripeSubscriptionId;
     private String paymentProcessor;
     private String lastPaymentReference;
+    private boolean cancelAtPeriodEnd;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -64,8 +65,17 @@ public class Subscription {
         this.status = ACTIVE;
         this.plan = plan;
         this.currentPeriodEnd = periodEnd;
+        this.cancelAtPeriodEnd = false;
         if (stripeCustomerId != null) this.stripeCustomerId = stripeCustomerId;
         if (stripeSubscriptionId != null) this.stripeSubscriptionId = stripeSubscriptionId;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Set from the processor's own flag on a subscription_updated webhook — active() alone can't
+     * tell "will renew" apart from "scheduled to cancel at period end", since Stripe's default
+     * portal cancellation keeps status=active until the period actually ends. */
+    public void setCancelAtPeriodEnd(boolean cancelAtPeriodEnd) {
+        this.cancelAtPeriodEnd = cancelAtPeriodEnd;
         this.updatedAt = Instant.now();
     }
 
@@ -92,6 +102,7 @@ public class Subscription {
 
     public void cancel() {
         this.status = CANCELED;
+        this.cancelAtPeriodEnd = false;
         this.updatedAt = Instant.now();
     }
 
@@ -119,4 +130,5 @@ public class Subscription {
     public String getPaymentProcessor() { return paymentProcessor; }
     public String getLastPaymentReference() { return lastPaymentReference; }
     public Instant getCreatedAt() { return createdAt; }
+    public boolean isCancelAtPeriodEnd() { return cancelAtPeriodEnd; }
 }

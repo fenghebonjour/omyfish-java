@@ -868,3 +868,73 @@ the trialing-only case still proceeds normally
 (`startCheckout_whenOnlyTrialingNoProcessorYet_proceeds`); full
 `mvn test -pl services/identity-service -am` on a clean build — 72/72 green
 across all 6 test classes.
+
+---
+
+## [x] L — Stripe webhook silently rejected when event `api_version` doesn't match the SDK's
+
+Found locally (2026-10-11) while debugging "I canceled via the billing
+portal but the account page still shows it active." Chased through three
+wrong leads first — stale `STRIPE_WEBHOOK_SECRET` (ruled out: CLI reuses the
+same signing secret across `stripe listen` sessions here), the api-gateway
+mangling the forwarded request (ruled out: pointing `stripe listen
+--forward-to` straight at `identity-service:8081` changed nothing), and
+malformed framing from the CLI's forwarder (ruled out: raw-captured the
+exact bytes with a bare `nc` listener — clean, well-formed HTTP/1.1,
+`Content-Length` matches body, normal headers).
+
+Actual culprit, found by reading `StripePaymentAdapter.verifyWebhook`
+(identity-service/.../StripePaymentAdapter.java:300-304): the
+`customer.subscription.updated`/`.deleted` case deserializes the event's
+data object via `event.getDataObjectDeserializer().getObject()`, and `if
+(sub == null) yield Optional.empty();` — with **no logging** on that branch.
+`stripe-java` returns empty from `getObject()` when the event's
+`api_version` doesn't match the version the SDK was compiled for, rather
+than deserializing anyway. The sandbox is issuing events with
+`"api_version": "2026-09-30.endive"` (confirmed via a captured
+`customer.subscription.updated` payload from `stripe trigger`); `pom.xml`
+pins `stripe-java` to `29.0.0`. So the signature check passes (secret and
+routing are both fine) and the webhook is rejected one step later, with the
+controller returning the same generic `400 "Invalid webhook signature"`
+either way — which is what made this look like a secret/signature problem
+for most of the debugging session. Not yet confirmed with a server-side log
+line (ran out of time before testing) — the hypothesis fits every symptom
+observed, but add a log on that `sub == null` branch first to verify before
+fixing.
+
+**Status:** DONE (2026-10-12). Confirmed live before fixing, per this item's
+own "add a log line first" plan: a WARN added to the `sub == null` branch
+fired for both `customer.subscription.updated` events during a full fresh
+local run (`omyfish-ai` + `make up` infra, 5 services in IntelliJ, `stripe
+listen`, frontend, checkout → portal cancel) — `stripe listen` showed `400`
+on both, identity-service logged the new warning for each, confirming the
+`api_version` mismatch hypothesis rather than leaving it unconfirmed.
+
+Fix: `StripePaymentAdapter` gained a private `deserializeEventObject(event,
+type)` helper, now used by all three webhook branches that were deserializing
+raw (`customer.subscription.updated`/`.deleted`, `setup_intent.succeeded`,
+`invoice.payment_failed` — not just the one caught live, since all three share
+the identical vulnerable `getObject().orElse(null)` pattern and the same root
+cause). It tries `getObject()` first; on empty, logs the WARN (now naming
+BACKLOG item L) and falls back to `event.getDataObjectDeserializer()
+.deserializeUnsafe()`, which skips the `api_version` check — Stripe's own
+documented workaround. A genuine schema failure (not just a version
+mismatch) still throws `EventDataObjectDeserializationException`, caught and
+logged, returning `null`/`Optional.empty()` same as before. Chose the code
+fallback over pinning the sandbox's Dashboard API version (the other option
+this item originally floated) since it's portable across dev/CI/prod and
+doesn't depend on a per-environment manual setting, unlike item J's portal
+toggle.
+
+Re-verified end to end: Stop+Run identity-service, canceled via the portal
+again — webhook now returns `200`, `/account` drops the "Subscribed" banner.
+Full `mvn test -pl services/identity-service -am` (clean build) — 72/72
+green, unchanged count, confirming the refactor didn't alter existing
+behavior.
+
+**Noticed but out of scope:** `BillingController`'s webhook handler still
+returns one identical 400 message for every failure reason (blank secret /
+bad signature / failed deserialization) — those three are still
+indistinguishable from the HTTP response alone, though the new per-branch
+logging now disambiguates them server-side. Not fixed here since it wasn't
+what broke this time and wasn't asked for.
