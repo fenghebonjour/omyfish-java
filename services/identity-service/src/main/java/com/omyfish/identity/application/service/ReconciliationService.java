@@ -1,6 +1,7 @@
 package com.omyfish.identity.application.service;
 
 import com.omyfish.identity.domain.model.Subscription;
+import com.omyfish.identity.domain.port.in.ApplyPaymentEventUseCase;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.PaymentPort.PaymentEvent;
 import com.omyfish.identity.domain.port.out.PaymentPort.ReconciliationCandidate;
@@ -27,10 +28,10 @@ public class ReconciliationService {
 
     private final PaymentProcessorRegistry processors;
     private final SubscriptionRepository subscriptions;
-    private final BillingService billing;
+    private final ApplyPaymentEventUseCase billing;
 
     public ReconciliationService(
-        PaymentProcessorRegistry processors, SubscriptionRepository subscriptions, BillingService billing
+        PaymentProcessorRegistry processors, SubscriptionRepository subscriptions, ApplyPaymentEventUseCase billing
     ) {
         this.processors = processors;
         this.subscriptions = subscriptions;

@@ -1,8 +1,9 @@
 package com.omyfish.identity.adapter.in.web;
 
-import com.omyfish.identity.application.service.BillingService;
 import com.omyfish.identity.application.service.PaymentProcessorRegistry;
 import com.omyfish.identity.domain.model.Subscription;
+import com.omyfish.identity.domain.port.in.ApplyPaymentEventUseCase;
+import com.omyfish.identity.domain.port.in.ManageSubscriptionUseCase;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.PaymentPort;
 import com.omyfish.identity.domain.port.out.TokenPort;
@@ -21,12 +22,17 @@ import java.util.UUID;
 @RequestMapping("/api/v1/billing")
 public class BillingController {
 
-    private final BillingService billing;
+    private final ManageSubscriptionUseCase billing;
+    private final ApplyPaymentEventUseCase paymentEvents;
     private final PaymentProcessorRegistry processors;
     private final TokenPort tokenPort;
 
-    public BillingController(BillingService billing, PaymentProcessorRegistry processors, TokenPort tokenPort) {
+    public BillingController(
+        ManageSubscriptionUseCase billing, ApplyPaymentEventUseCase paymentEvents,
+        PaymentProcessorRegistry processors, TokenPort tokenPort
+    ) {
         this.billing = billing;
+        this.paymentEvents = paymentEvents;
         this.processors = processors;
         this.tokenPort = tokenPort;
     }
@@ -126,7 +132,7 @@ public class BillingController {
         var event = port.verifyWebhook(payload, headers)
             .orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.BAD_REQUEST, "Invalid webhook signature"));
-        boolean handled = billing.applyEvent(event);
+        boolean handled = paymentEvents.applyEvent(event);
 
         // Adyen requires this exact literal body (not JSON) or it keeps retrying the webhook.
         if ("adyen".equals(processor)) {

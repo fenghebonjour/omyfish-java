@@ -4,6 +4,9 @@ import com.omyfish.identity.domain.model.IdempotencyRecord;
 import com.omyfish.identity.domain.model.ProcessedWebhookEvent;
 import com.omyfish.identity.domain.model.Subscription;
 import com.omyfish.identity.domain.model.User;
+import com.omyfish.identity.domain.port.in.AdminBillingUseCase;
+import com.omyfish.identity.domain.port.in.ApplyPaymentEventUseCase;
+import com.omyfish.identity.domain.port.in.ManageSubscriptionUseCase;
 import com.omyfish.identity.domain.port.out.IdempotencyConflictException;
 import com.omyfish.identity.domain.port.out.IdempotencyKeyRepository;
 import com.omyfish.identity.domain.port.out.PaymentPort;
@@ -19,7 +22,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public class BillingService {
+public class BillingService implements ManageSubscriptionUseCase, ApplyPaymentEventUseCase, AdminBillingUseCase {
 
     public static final int TRIAL_DAYS = 7;
     public static final double MONTHLY_CAD = 5;
@@ -55,11 +58,13 @@ public class BillingService {
             .orElseGet(() -> subscriptions.save(Subscription.startTrial(userId, TRIAL_DAYS)));
     }
 
+    @Override
     public Subscription mySubscription(UUID userId) {
         return startTrial(userId);
     }
 
     /** Empty when Stripe is not configured. */
+    @Override
     public Optional<PaymentPort.SubscriptionIntent> startCheckout(
         UUID userId, String plan, String idempotencyKey
     ) {
@@ -130,6 +135,7 @@ public class BillingService {
     }
 
     /** Empty when no payment processor is configured. */
+    @Override
     public Optional<PaymentPort.SetupIntentResult> startPaymentMethodSetup(UUID userId) {
         Optional<PaymentPort> processor = processors.defaultProcessor();
         if (processor.isEmpty()) {
@@ -147,6 +153,7 @@ public class BillingService {
         return intent;
     }
 
+    @Override
     public PaymentPort.RefundResult refund(UUID userId, Long amountCents, String idempotencyKey) {
         Optional<IdempotencyRecord> existing =
             idempotencyKeys.find(idempotencyKey, IdempotencyRecord.REFUND);
@@ -210,6 +217,7 @@ public class BillingService {
         return record;
     }
 
+    @Override
     public boolean applyEvent(PaymentEvent event) {
         if (event.eventId() != null && processedWebhookEvents.existsById(event.eventId())) {
             return true;
@@ -272,6 +280,7 @@ public class BillingService {
     }
 
     /** Empty when the subscription's processor has no portal (PayPal/Adyen) or isn't configured. */
+    @Override
     public Optional<String> createPortalSession(UUID userId, String returnUrl) {
         Subscription sub = subscriptions.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
@@ -285,10 +294,12 @@ public class BillingService {
 
     // ── Admin operations ──────────────────────────────────────────────────────
 
+    @Override
     public List<Subscription> allSubscriptions() {
         return subscriptions.findAll();
     }
 
+    @Override
     public Stats stats() {
         List<Subscription> all = subscriptions.findAll();
         long trialing = count(all, Subscription.TRIALING);
@@ -307,12 +318,14 @@ public class BillingService {
             Math.round(mrr * 100) / 100.0);
     }
 
+    @Override
     public Subscription grant(UUID userId, String plan, int days) {
         Subscription sub = startTrial(userId);
         sub.activate(plan, Instant.now().plus(days, ChronoUnit.DAYS), null, null);
         return subscriptions.save(sub);
     }
 
+    @Override
     public Subscription revoke(UUID userId) {
         Subscription sub = subscriptions.findByUserId(userId)
             .orElseThrow(() -> new IllegalArgumentException("No subscription for that user"));
@@ -320,6 +333,7 @@ public class BillingService {
         return subscriptions.save(sub);
     }
 
+    @Override
     public Subscription extendTrial(UUID userId, int days) {
         Subscription sub = startTrial(userId);
         sub.extendTrial(days);
