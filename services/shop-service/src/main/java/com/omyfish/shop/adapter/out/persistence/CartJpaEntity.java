@@ -5,6 +5,7 @@ import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
@@ -26,7 +27,9 @@ class CartJpaEntity {
     @Column(unique = true)
     private UUID guestToken;
 
-    @ElementCollection
+    // EAGER: same reasoning as OrderJpaEntity.lines — toDomain() always needs items, and several
+    // callers (e.g. ViewCartUseCase) run outside any @Transactional boundary.
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "cart_items", schema = "shop", joinColumns = @JoinColumn(name = "cart_id"))
     private List<CartItemEmbeddable> items = new ArrayList<>();
 

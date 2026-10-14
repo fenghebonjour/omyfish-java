@@ -8,6 +8,7 @@ import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
@@ -27,7 +28,10 @@ class OrderJpaEntity {
     private UUID userId;
     private String guestEmail;
 
-    @ElementCollection
+    // EAGER: every caller of toDomain() needs lines immediately, and several of them (e.g.
+    // GetOrderUseCase) run outside any @Transactional boundary, so a lazy collection here would
+    // throw LazyInitializationException once the loading session closes.
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "order_lines", schema = "shop", joinColumns = @JoinColumn(name = "order_id"))
     @OrderColumn(name = "line_index")
     private List<OrderLineEmbeddable> lines = new ArrayList<>();
