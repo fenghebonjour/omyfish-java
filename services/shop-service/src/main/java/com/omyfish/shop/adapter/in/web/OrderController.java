@@ -4,6 +4,7 @@ import com.omyfish.shop.adapter.in.web.dto.OrderResponse;
 import com.omyfish.shop.adapter.in.web.dto.ReturnRequest;
 import com.omyfish.shop.domain.port.in.ApproveReturnUseCase;
 import com.omyfish.shop.domain.port.in.GetOrderUseCase;
+import com.omyfish.shop.domain.port.in.ListAllOrdersUseCase;
 import com.omyfish.shop.domain.port.in.ListOrdersUseCase;
 import com.omyfish.shop.domain.port.in.LookupGuestOrderUseCase;
 import com.omyfish.shop.domain.port.in.RequestReturnUseCase;
@@ -24,17 +25,19 @@ public class OrderController {
     private final RequestReturnUseCase requestReturnUseCase;
     private final ApproveReturnUseCase approveReturnUseCase;
     private final LookupGuestOrderUseCase lookupGuestOrderUseCase;
+    private final ListAllOrdersUseCase listAllOrdersUseCase;
 
     public OrderController(
         ListOrdersUseCase listOrdersUseCase, GetOrderUseCase getOrderUseCase,
         RequestReturnUseCase requestReturnUseCase, ApproveReturnUseCase approveReturnUseCase,
-        LookupGuestOrderUseCase lookupGuestOrderUseCase
+        LookupGuestOrderUseCase lookupGuestOrderUseCase, ListAllOrdersUseCase listAllOrdersUseCase
     ) {
         this.listOrdersUseCase = listOrdersUseCase;
         this.getOrderUseCase = getOrderUseCase;
         this.requestReturnUseCase = requestReturnUseCase;
         this.approveReturnUseCase = approveReturnUseCase;
         this.lookupGuestOrderUseCase = lookupGuestOrderUseCase;
+        this.listAllOrdersUseCase = listAllOrdersUseCase;
     }
 
     // Public — guest order tracking by orderId+email, no account needed. Whitelisted in the
@@ -45,6 +48,18 @@ public class OrderController {
         @RequestParam UUID orderId, @RequestParam String email
     ) {
         return ResponseEntity.ok(OrderResponse.from(lookupGuestOrderUseCase.lookup(orderId, email)));
+    }
+
+    // Admin-only; lists every order regardless of owner (newest first) so an admin can find
+    // one — e.g. to approve a return — without already having its id from a support request.
+    // Must stay registered before "/{id}" below for the same reason "lookup" does.
+    @GetMapping("/admin")
+    public ResponseEntity<List<OrderResponse>> listAllForAdmin(@RequestHeader("X-User-Role") String userRoleHeader) {
+        if (!"ADMIN".equalsIgnoreCase(userRoleHeader)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Admin only");
+        }
+        var orders = listAllOrdersUseCase.listAll().stream().map(OrderResponse::from).toList();
+        return ResponseEntity.ok(orders);
     }
 
     @GetMapping

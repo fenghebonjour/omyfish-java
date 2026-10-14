@@ -6,6 +6,7 @@ import com.omyfish.shop.domain.model.Order;
 import com.omyfish.shop.domain.model.Product;
 import com.omyfish.shop.domain.port.in.ApproveReturnUseCase;
 import com.omyfish.shop.domain.port.in.GetOrderUseCase;
+import com.omyfish.shop.domain.port.in.ListAllOrdersUseCase;
 import com.omyfish.shop.domain.port.in.ListOrdersUseCase;
 import com.omyfish.shop.domain.port.in.LookupGuestOrderUseCase;
 import com.omyfish.shop.domain.port.in.RequestReturnUseCase;
@@ -17,7 +18,8 @@ import java.util.List;
 import java.util.UUID;
 
 public class OrderService implements
-    ListOrdersUseCase, GetOrderUseCase, RequestReturnUseCase, ApproveReturnUseCase, LookupGuestOrderUseCase {
+    ListOrdersUseCase, GetOrderUseCase, RequestReturnUseCase, ApproveReturnUseCase, LookupGuestOrderUseCase,
+    ListAllOrdersUseCase {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -65,6 +67,11 @@ public class OrderService implements
         });
 
         return orderRepository.save(order);
+    }
+
+    @Override
+    public List<Order> listAll() {
+        return orderRepository.findAll();
     }
 
     @Override

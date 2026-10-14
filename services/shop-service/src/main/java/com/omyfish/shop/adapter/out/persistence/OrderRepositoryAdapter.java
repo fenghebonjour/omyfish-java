@@ -38,4 +38,11 @@ public class OrderRepositoryAdapter implements OrderRepository {
             .map(OrderJpaEntity::toDomain)
             .toList();
     }
+
+    @Override
+    public List<Order> findAll() {
+        return jpaRepository.findAllByOrderByCreatedAtDesc().stream()
+            .map(OrderJpaEntity::toDomain)
+            .toList();
+    }
 }

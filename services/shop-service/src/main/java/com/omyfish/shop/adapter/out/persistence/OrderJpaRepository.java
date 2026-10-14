@@ -9,4 +9,5 @@ import java.util.UUID;
 interface OrderJpaRepository extends JpaRepository<OrderJpaEntity, UUID> {
     Optional<OrderJpaEntity> findByStripeSessionId(String stripeSessionId);
     List<OrderJpaEntity> findByUserId(UUID userId);
+    List<OrderJpaEntity> findAllByOrderByCreatedAtDesc();
 }

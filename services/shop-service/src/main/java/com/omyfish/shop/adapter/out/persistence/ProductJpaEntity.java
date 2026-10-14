@@ -19,6 +19,7 @@ class ProductJpaEntity {
     private String description;
     private long priceCents;
     private String imageUrl;
+    private String imageStorageKey;
     private int stockQuantity;
     private boolean active;
 
@@ -31,12 +32,14 @@ class ProductJpaEntity {
         e.description = p.getDescription();
         e.priceCents = p.getPriceCents();
         e.imageUrl = p.getImageUrl();
+        e.imageStorageKey = p.getImageStorageKey();
         e.stockQuantity = p.getStockQuantity();
         e.active = p.isActive();
         return e;
     }
 
     Product toDomain() {
-        return Product.reconstitute(id, name, description, priceCents, imageUrl, stockQuantity, active);
+        return Product.reconstitute(
+            id, name, description, priceCents, imageUrl, imageStorageKey, stockQuantity, active);
     }
 }

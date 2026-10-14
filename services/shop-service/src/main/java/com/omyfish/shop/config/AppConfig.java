@@ -10,6 +10,7 @@ import com.omyfish.shop.domain.port.in.ApproveReturnUseCase;
 import com.omyfish.shop.domain.port.in.CancelOrderUseCase;
 import com.omyfish.shop.domain.port.in.ReserveOrderUseCase;
 import com.omyfish.shop.domain.port.out.CartRepository;
+import com.omyfish.shop.domain.port.out.ImageStoragePort;
 import com.omyfish.shop.domain.port.out.OrderRepository;
 import com.omyfish.shop.domain.port.out.PaymentPort;
 import com.omyfish.shop.domain.port.out.ProductRepository;
@@ -21,8 +22,8 @@ import org.springframework.context.annotation.Primary;
 public class AppConfig {
 
     @Bean
-    ProductService productService(ProductRepository productRepository) {
-        return new ProductService(productRepository);
+    ProductService productService(ProductRepository productRepository, ImageStoragePort imageStoragePort) {
+        return new ProductService(productRepository, imageStoragePort);
     }
 
     @Bean

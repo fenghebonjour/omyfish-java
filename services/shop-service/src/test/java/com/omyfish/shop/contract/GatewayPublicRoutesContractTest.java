@@ -3,6 +3,7 @@ package com.omyfish.shop.contract;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.omyfish.shop.adapter.in.web.AdminProductController;
 import com.omyfish.shop.adapter.in.web.CartController;
 import com.omyfish.shop.adapter.in.web.CheckoutController;
 import com.omyfish.shop.adapter.in.web.OrderController;
@@ -24,10 +25,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Asserts shop-service's actual registered endpoints against the gateway's public-route
- * whitelist (same pattern as observation-service's own copy of this test) — catalog browsing,
- * the Stripe webhook, cart/checkout (guest checkout), and guest order lookup are anonymous;
- * order history, order-by-id, returns, and return-approval must all stay behind the gateway's
- * JWT check.
+ * whitelist (same pattern as observation-service's own copy of this test) — catalog browsing
+ * (including a product's served image), the Stripe webhook, cart/checkout (guest checkout),
+ * and guest order lookup are anonymous; order history, order-by-id, returns, return-approval,
+ * admin order listing, and admin image upload must all stay behind the gateway's JWT check.
  *
  * Contract source of truth: shared/api-contracts/public-routes.yaml
  */
@@ -40,6 +41,7 @@ class GatewayPublicRoutesContractTest {
     private static final Set<String> EXPECTED_PUBLIC_PATHS = Set.of(
         "/api/v1/shop/products",
         "/api/v1/shop/products/{id}",
+        "/api/v1/shop/products/{id}/image",
         "/api/v1/shop/webhook/stripe",
         "/api/v1/shop/cart",
         "/api/v1/shop/cart/items",
@@ -55,6 +57,7 @@ class GatewayPublicRoutesContractTest {
 
         Set<String> allEndpoints = new HashSet<>();
         allEndpoints.addAll(mappedPaths(ProductController.class));
+        allEndpoints.addAll(mappedPaths(AdminProductController.class));
         allEndpoints.addAll(mappedPaths(CartController.class));
         allEndpoints.addAll(mappedPaths(CheckoutController.class));
         allEndpoints.addAll(mappedPaths(OrderController.class));

@@ -11,4 +11,5 @@ public interface OrderRepository {
     Optional<Order> findById(UUID id);
     Optional<Order> findByStripeSessionId(String stripeSessionId);
     List<Order> findByUserId(UUID userId);
+    List<Order> findAll();
 }

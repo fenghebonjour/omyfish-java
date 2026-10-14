@@ -111,4 +111,17 @@ class OrderServiceTest {
         assertThatThrownBy(() -> service.lookup(order.getId(), "anything@example.com"))
             .isInstanceOf(OrderNotFoundException.class);
     }
+
+    @Test
+    void listAll_delegatesToRepositoryRegardlessOfOwner() {
+        Order accountOrder = Order.createPendingPayment(UUID.randomUUID(), null,
+            List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
+        Order guestOrder = Order.createPendingPayment(null, "guest@example.com",
+            List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
+        when(orderRepository.findAll()).thenReturn(List.of(accountOrder, guestOrder));
+
+        List<Order> result = service.listAll();
+
+        assertThat(result).containsExactly(accountOrder, guestOrder);
+    }
 }
