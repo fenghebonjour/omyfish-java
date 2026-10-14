@@ -1,5 +1,6 @@
 package com.omyfish.shop.adapter.out.payment;
 
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shop.domain.port.out.PaymentPort;
 import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.exception.SignatureVerificationException;
@@ -59,7 +60,8 @@ public class StripeCheckoutAdapter implements PaymentPort {
 
     @Override
     public Optional<CheckoutSession> createCheckoutSession(
-        UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey
+        UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey,
+        String customerEmail
     ) {
         if (secretKey.isBlank()) {
             return Optional.empty();
@@ -69,7 +71,18 @@ public class StripeCheckoutAdapter implements PaymentPort {
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setSuccessUrl(successUrl)
                 .setCancelUrl(cancelUrl)
-                .putMetadata("order_id", orderId.toString());
+                .putMetadata("order_id", orderId.toString())
+                // Lures/bait are physical goods — every checkout must collect somewhere to ship
+                // them. Canada-only for now, matching the rest of the app's Quebec/CAD focus.
+                .setShippingAddressCollection(SessionCreateParams.ShippingAddressCollection.builder()
+                    .addAllowedCountry(SessionCreateParams.ShippingAddressCollection.AllowedCountry.CA)
+                    .build());
+
+            if (customerEmail != null && !customerEmail.isBlank()) {
+                // Only set for guest checkout — an account checkout has no reliable email handy
+                // at this layer, and Stripe's own page still asks for one either way.
+                params.setCustomerEmail(customerEmail);
+            }
 
             for (LineItem line : lines) {
                 params.addLineItem(SessionCreateParams.LineItem.builder()
@@ -128,15 +141,34 @@ public class StripeCheckoutAdapter implements PaymentPort {
             case "checkout.session.completed" -> {
                 Session session = deserializeEventObject(event, Session.class);
                 yield session == null ? Optional.empty() : Optional.of(new PaymentEvent(
-                    PaymentEventType.SESSION_COMPLETED, session.getId(), session.getPaymentIntent()));
+                    PaymentEventType.SESSION_COMPLETED, session.getId(), session.getPaymentIntent(),
+                    extractShippingAddress(session)));
             }
             case "checkout.session.expired" -> {
                 Session session = deserializeEventObject(event, Session.class);
                 yield session == null ? Optional.empty() : Optional.of(new PaymentEvent(
-                    PaymentEventType.SESSION_EXPIRED, session.getId(), session.getPaymentIntent()));
+                    PaymentEventType.SESSION_EXPIRED, session.getId(), session.getPaymentIntent(), null));
             }
             default -> Optional.empty();
         };
+    }
+
+    // Null whenever the buyer hasn't actually filled in the shipping step yet — shouldn't
+    // happen for a genuinely completed session (ShippingAddressCollection is always set on
+    // creation), but a missing address shouldn't crash the webhook if it ever does.
+    private ShippingAddress extractShippingAddress(Session session) {
+        var collected = session.getCollectedInformation();
+        if (collected == null || collected.getShippingDetails() == null) {
+            return null;
+        }
+        var details = collected.getShippingDetails();
+        var address = details.getAddress();
+        if (address == null) {
+            return null;
+        }
+        return new ShippingAddress(
+            details.getName(), address.getLine1(), address.getLine2(), address.getCity(),
+            address.getState(), address.getPostalCode(), address.getCountry());
     }
 
     // getObject() comes back empty whenever the event's api_version doesn't match this SDK's

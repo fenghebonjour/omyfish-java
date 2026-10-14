@@ -2,6 +2,7 @@ package com.omyfish.shop.domain.model;
 
 import com.omyfish.shop.domain.exception.InvalidOrderStateException;
 import com.omyfish.shop.domain.model.valueobject.OrderLine;
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shared.domain.Entity;
 
 import java.time.Duration;
@@ -25,10 +26,12 @@ public class Order extends Entity<UUID> {
     private Instant returnRequestedAt;
     private Instant returnedAt;
     private String returnReason;
+    private ShippingAddress shippingAddress;
 
     private Order(UUID id, UUID userId, String guestEmail, List<OrderLine> lines, long totalCents, OrderStatus status,
                   String stripeSessionId, String stripePaymentIntentId, Instant createdAt,
-                  Instant paidAt, Instant returnRequestedAt, Instant returnedAt, String returnReason) {
+                  Instant paidAt, Instant returnRequestedAt, Instant returnedAt, String returnReason,
+                  ShippingAddress shippingAddress) {
         super(id);
         if ((userId == null) == (guestEmail == null)) {
             throw new IllegalArgumentException("Order requires exactly one of userId or guestEmail");
@@ -45,31 +48,33 @@ public class Order extends Entity<UUID> {
         this.returnRequestedAt = returnRequestedAt;
         this.returnedAt = returnedAt;
         this.returnReason = returnReason;
+        this.shippingAddress = shippingAddress;
     }
 
     public static Order createPendingPayment(UUID userId, String guestEmail, List<OrderLine> lines) {
         long total = lines.stream().mapToLong(OrderLine::subtotalCents).sum();
         return new Order(UUID.randomUUID(), userId, guestEmail, lines, total, OrderStatus.PENDING_PAYMENT,
-            null, null, Instant.now(), null, null, null, null);
+            null, null, Instant.now(), null, null, null, null, null);
     }
 
     public static Order reconstitute(UUID id, UUID userId, String guestEmail, List<OrderLine> lines, long totalCents,
                                       OrderStatus status, String stripeSessionId, String stripePaymentIntentId,
                                       Instant createdAt, Instant paidAt, Instant returnRequestedAt,
-                                      Instant returnedAt, String returnReason) {
+                                      Instant returnedAt, String returnReason, ShippingAddress shippingAddress) {
         return new Order(id, userId, guestEmail, lines, totalCents, status, stripeSessionId, stripePaymentIntentId,
-            createdAt, paidAt, returnRequestedAt, returnedAt, returnReason);
+            createdAt, paidAt, returnRequestedAt, returnedAt, returnReason, shippingAddress);
     }
 
     public void attachCheckoutSession(String stripeSessionId) {
         this.stripeSessionId = stripeSessionId;
     }
 
-    public void markPaid(String stripePaymentIntentId) {
+    public void markPaid(String stripePaymentIntentId, ShippingAddress shippingAddress) {
         requireStatus(OrderStatus.PENDING_PAYMENT);
         this.status = OrderStatus.PAID;
         this.stripePaymentIntentId = stripePaymentIntentId;
         this.paidAt = Instant.now();
+        this.shippingAddress = shippingAddress;
     }
 
     public void markCancelled() {
@@ -112,4 +117,5 @@ public class Order extends Entity<UUID> {
     public Instant getReturnRequestedAt() { return returnRequestedAt; }
     public Instant getReturnedAt() { return returnedAt; }
     public String getReturnReason() { return returnReason; }
+    public ShippingAddress getShippingAddress() { return shippingAddress; }
 }

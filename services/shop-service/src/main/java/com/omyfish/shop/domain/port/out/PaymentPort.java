@@ -1,5 +1,7 @@
 package com.omyfish.shop.domain.port.out;
 
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,14 +20,20 @@ public interface PaymentPort {
 
     enum PaymentEventType { SESSION_COMPLETED, SESSION_EXPIRED }
 
+    // shippingAddress is populated for SESSION_COMPLETED (Checkout always collects it — see
+    // StripeCheckoutAdapter.createCheckoutSession) and null for SESSION_EXPIRED.
     record PaymentEvent(
-        PaymentEventType type, String stripeSessionId, String stripePaymentIntentId
+        PaymentEventType type, String stripeSessionId, String stripePaymentIntentId,
+        ShippingAddress shippingAddress
     ) {}
 
     boolean isConfigured();
 
+    // customerEmail pre-fills/locks Stripe's own email field — pass the guest's email for a
+    // guest checkout so they aren't asked to type it twice; null for an account checkout.
     Optional<CheckoutSession> createCheckoutSession(
-        UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey
+        UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey,
+        String customerEmail
     );
 
     Optional<RefundResult> refund(String paymentIntentId, Long amountCents, String idempotencyKey);

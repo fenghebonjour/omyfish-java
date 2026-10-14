@@ -3,6 +3,7 @@ package com.omyfish.shop.application.service;
 import com.omyfish.shop.domain.model.Order;
 import com.omyfish.shop.domain.model.valueobject.CartOwner;
 import com.omyfish.shop.domain.model.valueobject.OrderLine;
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shop.domain.port.in.CancelOrderUseCase;
 import com.omyfish.shop.domain.port.in.ReserveOrderUseCase;
 import com.omyfish.shop.domain.port.out.OrderRepository;
@@ -40,7 +41,7 @@ class CheckoutOrchestrationServiceTest {
 
         when(paymentPort.isConfigured()).thenReturn(true);
         when(reserveOrder.reserve(owner, null)).thenReturn(order);
-        when(paymentPort.createCheckoutSession(eq(order.getId()), any(), anyString(), anyString(), anyString()))
+        when(paymentPort.createCheckoutSession(eq(order.getId()), any(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_1", "https://stripe.test/sess_1")));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -60,7 +61,8 @@ class CheckoutOrchestrationServiceTest {
 
         when(paymentPort.isConfigured()).thenReturn(true);
         when(reserveOrder.reserve(owner, "guest@example.com")).thenReturn(order);
-        when(paymentPort.createCheckoutSession(eq(order.getId()), any(), anyString(), anyString(), anyString()))
+        when(paymentPort.createCheckoutSession(
+                eq(order.getId()), any(), anyString(), anyString(), anyString(), eq("guest@example.com")))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_2", "https://stripe.test/sess_2")));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -68,6 +70,8 @@ class CheckoutOrchestrationServiceTest {
 
         assertThat(result.orderId()).isEqualTo(order.getId());
         verify(reserveOrder).reserve(owner, "guest@example.com");
+        verify(paymentPort).createCheckoutSession(
+            eq(order.getId()), any(), anyString(), anyString(), anyString(), eq("guest@example.com"));
     }
 
     @Test
@@ -90,7 +94,7 @@ class CheckoutOrchestrationServiceTest {
 
         when(paymentPort.isConfigured()).thenReturn(true);
         when(reserveOrder.reserve(owner, null)).thenReturn(order);
-        when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString()))
+        when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
             .thenThrow(new IllegalStateException("Stripe is down"));
 
         assertThatThrownBy(() -> service.checkout(owner, null, "https://ok", "https://cancel"))
@@ -100,13 +104,15 @@ class CheckoutOrchestrationServiceTest {
     }
 
     @Test
-    void handleWebhook_sessionCompleted_marksOrderPaid() {
+    void handleWebhook_sessionCompleted_marksOrderPaidAndStoresShippingAddress() {
         Order order = Order.createPendingPayment(UUID.randomUUID(), null,
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
         order.attachCheckoutSession("sess_1");
+        ShippingAddress shippingAddress = new ShippingAddress(
+            "Jane Angler", "123 Lake St", null, "Montreal", "QC", "H2X 1Y6", "CA");
 
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.of(
-            new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_1", "pi_1")));
+            new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_1", "pi_1", shippingAddress)));
         when(orderRepository.findByStripeSessionId("sess_1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -114,6 +120,7 @@ class CheckoutOrchestrationServiceTest {
 
         assertThat(handled).isTrue();
         assertThat(order.getStatus().name()).isEqualTo("PAID");
+        assertThat(order.getShippingAddress()).isEqualTo(shippingAddress);
     }
 
     @Test
@@ -123,7 +130,7 @@ class CheckoutOrchestrationServiceTest {
         order.attachCheckoutSession("sess_1");
 
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.of(
-            new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_EXPIRED, "sess_1", null)));
+            new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_EXPIRED, "sess_1", null, null)));
         when(orderRepository.findByStripeSessionId("sess_1")).thenReturn(Optional.of(order));
 
         boolean handled = service.handleWebhook("{}", Map.of("stripe-signature", "sig"));

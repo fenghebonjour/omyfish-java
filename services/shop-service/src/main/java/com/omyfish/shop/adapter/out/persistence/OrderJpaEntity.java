@@ -2,6 +2,7 @@ package com.omyfish.shop.adapter.out.persistence;
 
 import com.omyfish.shop.domain.model.Order;
 import com.omyfish.shop.domain.model.OrderStatus;
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -50,6 +51,17 @@ class OrderJpaEntity {
     @Column(length = 2000)
     private String returnReason;
 
+    // Flat columns rather than @Embedded: an all-null embeddable's null-vs-empty-object
+    // behavior on read varies by Hibernate version, and shippingLine1 == null is an
+    // unambiguous "no address yet" marker (set together with paidAt, never independently).
+    private String shippingRecipientName;
+    private String shippingLine1;
+    private String shippingLine2;
+    private String shippingCity;
+    private String shippingState;
+    private String shippingPostalCode;
+    private String shippingCountry;
+
     protected OrderJpaEntity() {}
 
     static OrderJpaEntity from(Order order) {
@@ -67,12 +79,26 @@ class OrderJpaEntity {
         e.returnRequestedAt = order.getReturnRequestedAt();
         e.returnedAt = order.getReturnedAt();
         e.returnReason = order.getReturnReason();
+        ShippingAddress shippingAddress = order.getShippingAddress();
+        if (shippingAddress != null) {
+            e.shippingRecipientName = shippingAddress.recipientName();
+            e.shippingLine1 = shippingAddress.line1();
+            e.shippingLine2 = shippingAddress.line2();
+            e.shippingCity = shippingAddress.city();
+            e.shippingState = shippingAddress.state();
+            e.shippingPostalCode = shippingAddress.postalCode();
+            e.shippingCountry = shippingAddress.country();
+        }
         return e;
     }
 
     Order toDomain() {
+        ShippingAddress shippingAddress = shippingLine1 == null ? null : new ShippingAddress(
+            shippingRecipientName, shippingLine1, shippingLine2, shippingCity, shippingState,
+            shippingPostalCode, shippingCountry);
         return Order.reconstitute(
             id, userId, guestEmail, lines.stream().map(OrderLineEmbeddable::toDomain).toList(), totalCents, status,
-            stripeSessionId, stripePaymentIntentId, createdAt, paidAt, returnRequestedAt, returnedAt, returnReason);
+            stripeSessionId, stripePaymentIntentId, createdAt, paidAt, returnRequestedAt, returnedAt, returnReason,
+            shippingAddress);
     }
 }

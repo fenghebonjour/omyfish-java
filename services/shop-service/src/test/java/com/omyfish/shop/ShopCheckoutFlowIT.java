@@ -2,6 +2,7 @@ package com.omyfish.shop;
 
 import com.omyfish.shop.domain.model.OrderStatus;
 import com.omyfish.shop.domain.model.valueobject.CartOwner;
+import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shop.domain.port.in.AddToCartUseCase;
 import com.omyfish.shop.domain.port.in.CheckoutUseCase;
 import com.omyfish.shop.domain.port.in.ConfirmPaymentWebhookUseCase;
@@ -63,15 +64,18 @@ class ShopCheckoutFlowIT {
         addToCartUseCase.addItem(owner, SEEDED_PRODUCT_ID, 2);
 
         when(paymentPort.isConfigured()).thenReturn(true);
-        when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString()))
+        when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_it_1", "https://stripe.test/sess_it_1")));
 
         var checkoutResult = checkoutUseCase.checkout(owner, null, "https://ok", "https://cancel");
         assertThat(getOrderUseCase.get(checkoutResult.orderId(), userId).getStatus())
             .isEqualTo(OrderStatus.PENDING_PAYMENT);
 
+        ShippingAddress shippingAddress = new ShippingAddress(
+            "Jane Angler", "123 Lake St", null, "Montreal", "QC", "H2X 1Y6", "CA");
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.of(
-            new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_it_1", "pi_it_1")));
+            new PaymentPort.PaymentEvent(
+                PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_it_1", "pi_it_1", shippingAddress)));
 
         boolean handled = confirmPaymentWebhookUseCase.handleWebhook("{}", Map.of("stripe-signature", "sig"));
 
@@ -79,5 +83,6 @@ class ShopCheckoutFlowIT {
         var paidOrder = getOrderUseCase.get(checkoutResult.orderId(), userId);
         assertThat(paidOrder.getStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(paidOrder.getStripePaymentIntentId()).isEqualTo("pi_it_1");
+        assertThat(paidOrder.getShippingAddress()).isEqualTo(shippingAddress);
     }
 }

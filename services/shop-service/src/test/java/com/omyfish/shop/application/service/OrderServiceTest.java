@@ -49,7 +49,7 @@ class OrderServiceTest {
     void requestReturn_ownerWithinWindow_setsReturnRequested() {
         UUID userId = UUID.randomUUID();
         Order order = Order.createPendingPayment(userId, null, List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
-        order.markPaid("pi_1");
+        order.markPaid("pi_1", null);
         when(orderRepository.findById(order.getId())).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -64,7 +64,7 @@ class OrderServiceTest {
         UUID productId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         Order order = Order.createPendingPayment(userId, null, List.of(new OrderLine(productId, "Jig", 999, 2)));
-        order.markPaid("pi_1");
+        order.markPaid("pi_1", null);
         order.requestReturn("no longer needed");
         Product product = Product.reconstitute(productId, "Jig", "desc", 999, "img.jpg", 5, true);
 

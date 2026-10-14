@@ -50,7 +50,7 @@ public class CheckoutOrchestrationService implements CheckoutUseCase, ConfirmPay
         Optional<PaymentPort.CheckoutSession> session;
         try {
             session = paymentPort.createCheckoutSession(
-                order.getId(), lineItems, successUrl, cancelUrl, order.getId().toString());
+                order.getId(), lineItems, successUrl, cancelUrl, order.getId().toString(), guestEmail);
         } catch (RuntimeException e) {
             cancelOrder.cancelAndRestock(order.getId());
             throw new IllegalStateException("Checkout session creation failed: " + e.getMessage(), e);
@@ -85,7 +85,7 @@ public class CheckoutOrchestrationService implements CheckoutUseCase, ConfirmPay
         switch (event.type()) {
             case SESSION_COMPLETED -> {
                 if (order.getStatus() == OrderStatus.PENDING_PAYMENT) {
-                    order.markPaid(event.stripePaymentIntentId());
+                    order.markPaid(event.stripePaymentIntentId(), event.shippingAddress());
                     orderRepository.save(order);
                 }
             }
