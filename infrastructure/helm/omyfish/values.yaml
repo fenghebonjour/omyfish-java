@@ -32,6 +32,8 @@ services:
         value: "http://observation-service:8080"
       - name: NOTIFICATION_SERVICE_URL
         value: "http://notification-service:8080"
+      - name: SHOP_SERVICE_URL
+        value: "http://shop-service:8080"
 
   identity-service:
     enabled: true
@@ -103,6 +105,25 @@ services:
     replicas: 1
     image:
       repository: omyfish/notification-service
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 8080
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    autoscaling:
+      enabled: false
+    env: []
+
+  shop-service:
+    enabled: true
+    replicas: 1
+    image:
+      repository: omyfish/shop-service
       tag: "latest"
       pullPolicy: IfNotPresent
     port: 8080

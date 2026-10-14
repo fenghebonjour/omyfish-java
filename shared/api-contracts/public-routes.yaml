@@ -1,4 +1,7 @@
-# Source of truth for which route prefixes must NOT require a JWT at the gateway.
+# Source of truth for which route prefixes must NOT require a JWT at the gateway. A valid
+# Bearer token is still parsed and forwarded as X-User-Id/Email/Role when one is present on a
+# public route (it's just not rejected when absent) — that's how shop-service tells an
+# account checkout from a guest checkout on the same cart/checkout endpoints.
 #
 # api-gateway's AuthFilter.PUBLIC_PREFIXES must match this list exactly (enforced by
 # api-gateway's PublicRoutesContractTest), and each owning service asserts its own actual
@@ -23,3 +26,18 @@ publicPrefixes:
   - prefix: /api/v1/billing/webhook
     service: identity-service
     reason: Stripe/PayPal/Adyen call this directly; signature-verified in the service, not JWT-gated
+  - prefix: /api/v1/shop/products
+    service: shop-service
+    reason: catalog browsing is anonymous-friendly, like species
+  - prefix: /api/v1/shop/webhook/stripe
+    service: shop-service
+    reason: Stripe calls this directly; signature-verified in the service, not JWT-gated
+  - prefix: /api/v1/shop/cart
+    service: shop-service
+    reason: guest checkout — cart must work without an account; gateway still forwards identity when a valid token is present
+  - prefix: /api/v1/shop/checkout
+    service: shop-service
+    reason: guest checkout — an anonymous buyer pays with a guestEmail instead of X-User-Id
+  - prefix: /api/v1/shop/orders/lookup
+    service: shop-service
+    reason: guest order tracking by orderId+email, no account needed

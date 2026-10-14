@@ -29,7 +29,12 @@ public class AuthFilter implements GlobalFilter, Ordered {
         "/api/v1/auth/",
         "/api/v1/species",
         "/api/v1/observations/geojson",
-        "/api/v1/billing/webhook"  // Stripe/PayPal/Adyen call this; signature-verified in the service
+        "/api/v1/billing/webhook",  // Stripe/PayPal/Adyen call this; signature-verified in the service
+        "/api/v1/shop/products",    // catalog browsing is anonymous-friendly, like species
+        "/api/v1/shop/webhook/stripe",  // Stripe calls this directly; signature-verified in the service
+        "/api/v1/shop/cart",        // guest checkout — cart must work without an account
+        "/api/v1/shop/checkout",    // guest checkout — a guest pays with a guestEmail instead of X-User-Id
+        "/api/v1/shop/orders/lookup"  // guest order tracking by orderId+email, no account needed
     );
 
     private final SecretKey key;
@@ -50,15 +55,43 @@ public class AuthFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        if (isPublic(path)) {
-            return chain.filter(exchange);
-        }
+        Claims claims = parseValidClaims(exchange);
 
-        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        if (claims == null && !isPublic(path)) {
             return reject(exchange, HttpStatus.UNAUTHORIZED);
         }
 
+        // Always strip any client-supplied identity headers first, then set them only from
+        // verified claims — otherwise an anonymous request to a public route (e.g.
+        // shop-service's guest-checkout endpoints, which branch on X-User-Id being present)
+        // could spoof X-User-Id itself, since a missing/invalid token wouldn't otherwise
+        // overwrite whatever the client sent.
+        ServerWebExchange mutated = exchange.mutate()
+            .request(r -> r.headers(headers -> {
+                headers.remove("X-User-Id");
+                headers.remove("X-User-Email");
+                headers.remove("X-User-Role");
+                if (claims != null) {
+                    headers.set("X-User-Id", claims.getSubject());
+                    headers.set("X-User-Email", claims.get("email", String.class));
+                    headers.set("X-User-Role", claims.get("role", String.class));
+                }
+            }))
+            .build();
+
+        return chain.filter(mutated);
+    }
+
+    // Returns the token's claims when a valid, non-refresh Bearer token is present, or null
+    // otherwise (missing header, malformed/expired token, or a refresh token) — the caller
+    // decides whether that's fatal (private route) or fine (public route, no identity forwarded).
+    // This lets public routes still identify an optionally-logged-in caller, e.g. guest
+    // checkout vs. account checkout on the same shop-service endpoints.
+    private Claims parseValidClaims(ServerWebExchange exchange) {
+        String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return null;
+        }
         try {
             Claims claims = Jwts.parser()
                 .verifyWith(key)
@@ -69,21 +102,11 @@ public class AuthFilter implements GlobalFilter, Ordered {
             // Refresh tokens are signed with the same key but must never
             // authenticate API calls — they are only valid at /api/v1/auth/refresh.
             if ("refresh".equals(claims.get("token_type", String.class))) {
-                return reject(exchange, HttpStatus.UNAUTHORIZED);
+                return null;
             }
-
-            ServerWebExchange mutated = exchange.mutate()
-                .request(r -> r
-                    .header("X-User-Id", claims.getSubject())
-                    .header("X-User-Email", claims.get("email", String.class))
-                    .header("X-User-Role", claims.get("role", String.class))
-                )
-                .build();
-
-            return chain.filter(mutated);
-
+            return claims;
         } catch (JwtException e) {
-            return reject(exchange, HttpStatus.UNAUTHORIZED);
+            return null;
         }
     }
 
