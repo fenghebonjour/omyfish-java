@@ -34,13 +34,49 @@ class AuthFilterTest {
     private final GatewayFilterChain chain = mock(GatewayFilterChain.class);
 
     @Test
-    void publicPath_bypassesAuthCheckEntirely() {
+    void publicPath_noToken_isForwardedWithoutRejection() {
         when(chain.filter(any())).thenReturn(Mono.empty());
         ServerWebExchange exchange = exchangeFor("/api/v1/species/identify", null);
 
         filter.filter(exchange, chain).block();
 
-        verify(chain).filter(exchange);
+        verify(chain).filter(any());
+    }
+
+    // § guest checkout: a public route (e.g. shop-service's cart/checkout) must never forward a
+    // client-supplied X-User-Id when no valid token was presented — otherwise an anonymous
+    // caller could just set that header themselves and impersonate any account.
+    @Test
+    void publicPath_noToken_stripsClientSuppliedIdentityHeaders() {
+        when(chain.filter(any())).thenReturn(Mono.empty());
+        ServerWebExchange exchange = MockServerWebExchange.from(
+            MockServerHttpRequest.get("/api/v1/shop/cart")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "ADMIN")
+                .build());
+
+        filter.filter(exchange, chain).block();
+
+        ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(captor.capture());
+        HttpHeaders forwarded = captor.getValue().getRequest().getHeaders();
+        assertThat(forwarded.getFirst("X-User-Id")).isNull();
+        assertThat(forwarded.getFirst("X-User-Role")).isNull();
+    }
+
+    @Test
+    void publicPath_validAccessToken_stillForwardsUserHeaders() {
+        when(chain.filter(any())).thenReturn(Mono.empty());
+        UUID userId = UUID.randomUUID();
+        String token = tokenFor(userId, "angler@omyfish.io", "USER", null);
+        ServerWebExchange exchange = exchangeFor("/api/v1/shop/cart", "Bearer " + token);
+
+        filter.filter(exchange, chain).block();
+
+        ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(captor.capture());
+        HttpHeaders forwarded = captor.getValue().getRequest().getHeaders();
+        assertThat(forwarded.getFirst("X-User-Id")).isEqualTo(userId.toString());
     }
 
     @Test

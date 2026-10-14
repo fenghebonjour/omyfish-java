@@ -9,6 +9,7 @@ COPY services/identity-service/pom.xml services/identity-service/
 COPY services/species-service/pom.xml services/species-service/
 COPY services/observation-service/pom.xml services/observation-service/
 COPY services/notification-service/pom.xml services/notification-service/
+COPY services/shop-service/pom.xml services/shop-service/
 COPY services/observation-service/src services/observation-service/src
 RUN --mount=type=cache,target=/root/.m2,sharing=locked mvn clean package -DskipTests -pl services/observation-service -am
 

@@ -39,6 +39,10 @@ spring:
           uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/api/v1/notifications/**
+        - id: shop-service
+          uri: ${SHOP_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/api/v1/shop/**
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-change-in-production-32b}

@@ -1,0 +1,102 @@
+package com.omyfish.shop.contract;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.omyfish.shop.adapter.in.web.CartController;
+import com.omyfish.shop.adapter.in.web.CheckoutController;
+import com.omyfish.shop.adapter.in.web.OrderController;
+import com.omyfish.shop.adapter.in.web.ProductController;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Asserts shop-service's actual registered endpoints against the gateway's public-route
+ * whitelist (same pattern as observation-service's own copy of this test) — catalog browsing,
+ * the Stripe webhook, cart/checkout (guest checkout), and guest order lookup are anonymous;
+ * order history, order-by-id, returns, and return-approval must all stay behind the gateway's
+ * JWT check.
+ *
+ * Contract source of truth: shared/api-contracts/public-routes.yaml
+ */
+class GatewayPublicRoutesContractTest {
+
+    private static final Path SPEC_PATH = Path.of(
+        "..", "..", "shared", "api-contracts", "public-routes.yaml"
+    );
+
+    private static final Set<String> EXPECTED_PUBLIC_PATHS = Set.of(
+        "/api/v1/shop/products",
+        "/api/v1/shop/products/{id}",
+        "/api/v1/shop/webhook/stripe",
+        "/api/v1/shop/cart",
+        "/api/v1/shop/cart/items",
+        "/api/v1/shop/cart/items/{productId}",
+        "/api/v1/shop/cart/merge",
+        "/api/v1/shop/checkout",
+        "/api/v1/shop/orders/lookup"
+    );
+
+    @Test
+    void shopServiceEndpoints_matchingAPublicPrefix_areExactlyTheReviewedSet() throws IOException {
+        List<String> publicPrefixes = loadPublicPrefixesFor("shop-service");
+
+        Set<String> allEndpoints = new HashSet<>();
+        allEndpoints.addAll(mappedPaths(ProductController.class));
+        allEndpoints.addAll(mappedPaths(CartController.class));
+        allEndpoints.addAll(mappedPaths(CheckoutController.class));
+        allEndpoints.addAll(mappedPaths(OrderController.class));
+
+        Set<String> actualPublic = allEndpoints.stream()
+            .filter(path -> publicPrefixes.stream().anyMatch(path::startsWith))
+            .collect(java.util.stream.Collectors.toSet());
+
+        assertThat(actualPublic)
+            .as("endpoints matching a public prefix from public-routes.yaml")
+            .isEqualTo(EXPECTED_PUBLIC_PATHS);
+    }
+
+    private static List<String> loadPublicPrefixesFor(String service) throws IOException {
+        ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
+        JsonNode spec = yamlMapper.readTree(Files.readString(SPEC_PATH));
+
+        List<String> prefixes = new ArrayList<>();
+        for (JsonNode entry : spec.get("publicPrefixes")) {
+            if (service.equals(entry.get("service").asText())) {
+                prefixes.add(entry.get("prefix").asText());
+            }
+        }
+        return prefixes;
+    }
+
+    private static Set<String> mappedPaths(Class<?> controllerClass) {
+        RequestMapping classMapping = AnnotatedElementUtils.findMergedAnnotation(controllerClass, RequestMapping.class);
+        String basePath = classMapping.value().length > 0 ? classMapping.value()[0] : "";
+
+        Set<String> paths = new HashSet<>();
+        for (Method method : controllerClass.getDeclaredMethods()) {
+            RequestMapping methodMapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
+            if (methodMapping == null) continue;
+            if (methodMapping.value().length == 0) {
+                paths.add(basePath);
+            } else {
+                for (String subPath : methodMapping.value()) {
+                    paths.add(basePath + subPath);
+                }
+            }
+        }
+        return paths;
+    }
+}

@@ -19,6 +19,7 @@
         <module>services/species-service</module>
         <module>services/observation-service</module>
         <module>services/notification-service</module>
+        <module>services/shop-service</module>
         <module>services/api-gateway</module>
     </modules>
 

@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: shop-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/omyfish}
+    username: ${SPRING_DATASOURCE_USERNAME:omyfish}
+    password: ${SPRING_DATASOURCE_PASSWORD:omyfish_dev}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    table: flyway_schema_history_shop
+    baseline-on-migrate: true
+
+server:
+  port: 8080
+
+# Checkout returns 503 until this is configured. Can reuse the same Stripe account's secret key
+# as identity-service's billing module, but the webhook secret must be its own — Omyshop's
+# checkout-session webhook is a separate Stripe endpoint from the billing-subscription one.
+stripe:
+  secret-key: ${STRIPE_SECRET_KEY:}
+  shop-webhook-secret: ${STRIPE_SHOP_WEBHOOK_SECRET:}
+  currency: ${STRIPE_SHOP_CURRENCY:cad}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
