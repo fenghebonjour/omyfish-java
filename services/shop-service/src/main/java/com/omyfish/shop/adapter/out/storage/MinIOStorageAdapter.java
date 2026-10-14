@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class MinIOStorageAdapter implements ImageStoragePort {
 
+    private static final String DEFAULT_EXTENSION = ".jpg";
+
     private final MinioClient minioClient;
     private final String bucket;
     private final AtomicBoolean bucketReady = new AtomicBoolean(false);
@@ -50,10 +52,7 @@ public class MinIOStorageAdapter implements ImageStoragePort {
     @Override
     public String store(InputStream data, long size, String contentType, String originalFilename) {
         ensureBucketExists();
-        String ext = (originalFilename != null && originalFilename.contains("."))
-            ? originalFilename.substring(originalFilename.lastIndexOf('.'))
-            : ".jpg";
-        String key = "products/" + UUID.randomUUID() + ext;
+        String key = "products/" + UUID.randomUUID() + extensionOf(originalFilename);
         try {
             minioClient.putObject(
                 PutObjectArgs.builder()
@@ -79,5 +78,20 @@ public class MinIOStorageAdapter implements ImageStoragePort {
         } catch (Exception e) {
             throw new RuntimeException("Failed to load image from MinIO: " + key, e);
         }
+    }
+
+    // Only a short alphanumeric extension is kept, so a client-supplied filename like
+    // "fish.jpg/../../etc/passwd" can't put separators into the object key (same fix PR #4
+    // already applied to species-service's copy of this exact pattern).
+    private static String extensionOf(String originalFilename) {
+        if (originalFilename == null) {
+            return DEFAULT_EXTENSION;
+        }
+        int dot = originalFilename.lastIndexOf('.');
+        if (dot < 0) {
+            return DEFAULT_EXTENSION;
+        }
+        String ext = originalFilename.substring(dot + 1).toLowerCase();
+        return ext.matches("[a-z0-9]{1,8}") ? "." + ext : DEFAULT_EXTENSION;
     }
 }

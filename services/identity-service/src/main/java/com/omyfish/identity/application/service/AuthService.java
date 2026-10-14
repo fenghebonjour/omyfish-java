@@ -62,6 +62,9 @@ public class AuthService implements
         if (!passwordEncoder.matches(command.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
+        if (!user.isActive()) {
+            throw new IllegalArgumentException("Invalid credentials");
+        }
         String token = tokenPort.issue(user.getId(), user.getEmail(), user.getRole());
         String refreshToken = tokenPort.issueRefresh(user.getId());
         return new LoginResult(token, refreshToken, user.getId(), user.getEmail(), user.getRole());
@@ -71,6 +74,7 @@ public class AuthService implements
     public RefreshResult refresh(String refreshToken) {
         User user = tokenPort.validateRefresh(refreshToken)
             .flatMap(userRepository::findById)
+            .filter(User::isActive)
             .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
         String token = tokenPort.issue(user.getId(), user.getEmail(), user.getRole());
         String rotated = tokenPort.issueRefresh(user.getId());
@@ -81,6 +85,7 @@ public class AuthService implements
     public CurrentUser me(String accessToken) {
         User user = tokenPort.validateAccess(accessToken)
             .flatMap(userRepository::findById)
+            .filter(User::isActive)
             .orElseThrow(() -> new IllegalArgumentException("Invalid token"));
         return new CurrentUser(user.getId(), user.getEmail(), user.getRole());
     }

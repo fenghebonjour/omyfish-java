@@ -25,10 +25,14 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // /api/v1/billing/** and /api/v1/admin/** validate their own bearer
-                // tokens in the controllers (same pattern as /api/v1/auth/me).
+                // /api/v1/billing/**, /api/v1/admin/** and /api/v1/users/**/api-keys validate
+                // their own bearer tokens in the controllers (same pattern as /api/v1/auth/me).
+                // Without this, Spring Security's anyRequest().authenticated() below blocks
+                // them outright with a flat 403 before the controller ever runs — caught while
+                // verifying the createApiKey IDOR fix, which the @WebMvcTest slice (it excludes
+                // Spring Security entirely) could never have exposed.
                 .requestMatchers("/api/v1/auth/**", "/api/v1/billing/**", "/api/v1/admin/**",
-                    "/actuator/**", "/error").permitAll()
+                    "/api/v1/users/**", "/actuator/**", "/error").permitAll()
                 .anyRequest().authenticated()
             )
             .build();
