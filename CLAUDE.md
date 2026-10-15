@@ -38,6 +38,7 @@ services/
   species-service/              AI orchestration, species KB
   observation-service/          Observation CRUD, EXIF, PostGIS, GeoJSON
   notification-service/         RabbitMQ consumer, notifications
+  shop-service/                 Omyshop: product catalog, cart, checkout (Stripe), orders
 infrastructure/
   kubernetes/                   K8s manifests (namespace, deployment, hpa, ingress)
   helm/omyfish/                 Helm chart for all services
@@ -86,6 +87,30 @@ config/           Spring beans wiring ports to adapters
 - Routing keys: `fish.identified`, `observation.created`
 - All queues are Quorum type with DLQ configured
 - Event classes live in `shared/omyfish-shared-events/`
+
+## Shop Service (Omyshop)
+
+Product catalog, cart, checkout, and order management, under `/api/v1/shop/**` (whitelisted
+entry points for guest use: `products`, `cart`, `checkout`, `webhook/stripe`, `orders/lookup` —
+see the gateway's `AuthFilter.PUBLIC_PREFIXES`).
+
+- `domain/model`: `Product`, `Cart`, `Order` (`OrderStatus`: `PENDING_PAYMENT`, `PAID`,
+  `CANCELLED`, `RETURN_REQUESTED`, `RETURNED`)
+- Checkout is Stripe Checkout Sessions (`adapter/out/payment/StripeCheckoutAdapter`); the
+  `/webhook/stripe` endpoint confirms payment and transitions the order to `PAID`
+- Guests check out with a `guestEmail` + cart identified by an `X-Cart-Token` header (no
+  account); `POST /api/v1/shop/cart/merge` folds a guest cart into the account cart after login
+- Product photos are uploaded by admins (`AdminProductController`, `X-User-Role: ADMIN`) and
+  stored in MinIO (`minio.bucket: product-images`); the `V1__create_products_table.sql` seed's
+  10 products start with an inline `data:` URI placeholder (never hits the image-serving
+  endpoint) until an admin upload replaces it. In this repo's own dev stack all 10 already have
+  a real photo (CC0/CC-BY/CC-BY-SA, sourced from Wikimedia Commons + Openverse) — that's live
+  MinIO/Postgres state, not part of any migration, so it's lost on `docker compose down -v` and
+  has to be re-uploaded the same way (`POST /api/v1/shop/admin/products/{id}/image`; also
+  re-done for `omyfish-dotnet`'s shop-service port by pulling these exact files back out of
+  this repo's MinIO)
+- Postgres, own `shop` schema (`shop.products`, `shop.carts`, `shop.cart_items`, `shop.orders`,
+  `shop.order_lines`) in the same `omyfish` database/instance as the other JPA services
 
 ## AI Service
 

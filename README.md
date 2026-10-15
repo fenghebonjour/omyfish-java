@@ -57,6 +57,7 @@ omyfish-java/
     species-service/          ← AI orchestration, species KB
     observation-service/      ← Logging, GIS, GeoJSON
     notification-service/     ← RabbitMQ event consumer
+    shop-service/             ← Omyshop: catalog, cart, Stripe checkout, orders
     ai-service/               ← builds from ../omyfish-ai (shared: Bite Score + fish ID + Regs & Tips chatbot)
   shared/
     omyfish-shared-domain/    ← AggregateRoot, Entity, DomainEvent
@@ -75,7 +76,9 @@ omyfish-* backend:
 - Angular — https://github.com/fenghebonjour/omyfish-frontend-angular
 
 `docker-compose.yml`'s `frontend`/`frontend-angular` services pull pinned tags; develop either
-frontend by cloning its repo directly.
+frontend by cloning its repo directly. `make up`/`build-up` warn (without blocking) if the
+React frontend's pin is behind a sibling `../omyfish-frontend` checkout — bump the tag to pick
+up frontend changes.
 
 ## Architecture
 
@@ -91,6 +94,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full diagrams, DDD bounded contexts, 
 | Species Service      | 8082 |
 | Observation Service  | 8083 |
 | Notification Service | 8084 |
+| Shop Service         | 8085 |
 | AI Service (Python)  | 8000 |
 | PostgreSQL           | 5432 |
 | MongoDB              | 27017|

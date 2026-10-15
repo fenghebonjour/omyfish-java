@@ -33,7 +33,7 @@
        ▼                              ▼    - observation-service (ObsCreated)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                         PostgreSQL + PostGIS                                │
-│              identity_db              observation_db                        │
+│              identity_db     observation_db     shop (schema)               │
 └────────────────────────────────────────────────────────────────────────────┘
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                         MongoDB                                             │
@@ -60,6 +60,7 @@
 | **species-service**  | AI orchestration, species knowledge base, top-K predictions | 8082 | Spring Web, Spring AMQP, Spring Data MongoDB |
 | **observation-service** | Observation CRUD, EXIF extraction, PostGIS, GeoJSON export | 8083 | Hibernate Spatial, MinIO   |
 | **notification-service** | Async notifications, email/webhook dispatch            | 8084 | Spring AMQP consumer          |
+| **shop-service**     | Omyshop: product catalog, cart, Stripe checkout, orders & returns | 8085 | Spring Web, Spring Data JPA, Stripe SDK, MinIO |
 | **ai-service**       | EfficientNet-B3 inference, CLIP fallback, Bite Score forecast — shared `omyfish-ai` | 8000 | Python, FastAPI, PyTorch      |
 
 ## DDD Bounded Contexts
@@ -87,6 +88,18 @@
 │  Port:      CreateObs       │    │  GET /api/v1/notifications    │
 │  Port:      ExportGeoJson   │    │  PUT /{id}/read               │
 └─────────────────────────────┘    └──────────────────────────────┘
+
+┌─────────────────────────────┐
+│      SHOP CONTEXT           │
+│                             │
+│  Aggregate: Order           │
+│  Aggregate: Cart            │
+│  Entity:    Product         │
+│  ValueObj:  CartOwner       │
+│  Port:      Checkout        │
+│  Port:      ConfirmPaymentWebhook │
+│  Port:      RequestReturn   │
+└─────────────────────────────┘
 ```
 
 ## Hexagonal Architecture (per service)
@@ -194,6 +207,22 @@ WHERE location IS NOT NULL
   AND observed_at BETWEEN :from AND :to;
 ```
 
+### shop schema
+
+```sql
+-- shop.products, shop.carts/cart_items, shop.orders/order_lines
+-- (see services/shop-service/src/main/resources/db/migration)
+shop.products     (id UUID PK, name, description, price_cents, image_url,
+                   stock_quantity, active)
+shop.carts        (id UUID PK, user_id UUID UNIQUE)
+shop.cart_items   (cart_id FK, product_id, quantity — PK (cart_id, product_id))
+shop.orders       (id UUID PK, user_id, total_cents, status,
+                   stripe_session_id UNIQUE, stripe_payment_intent_id,
+                   created_at, paid_at, return_requested_at, returned_at, return_reason)
+shop.order_lines  (order_id FK, line_index, product_id, product_name,
+                   unit_price_cents, quantity — PK (order_id, line_index), snapshotted at checkout)
+```
+
 ## Object Storage Strategy
 
 | Bucket              | Content                      | Lifecycle          |
@@ -202,6 +231,7 @@ WHERE location IS NOT NULL
 | `omyfish-thumbnails`| Resized 300×300 previews     | Generated on upload|
 | `omyfish-exports`   | GeoJSON / CSV exports        | 7-day TTL          |
 | `omyfish-models`    | ONNX model artifacts         | Version-tagged     |
+| `product-images`    | Admin-uploaded shop product photos (shop-service) | Replaced on re-upload |
 
 ## API Contracts (REST)
 
@@ -263,6 +293,31 @@ POST /api/v1/admin/subscriptions/reconcile
 webhook fires. The frontend's `/account` page shows a "Manage billing"
 button (→ portal-session) for Stripe subscribers (active or past_due) and
 a "contact support" line for PayPal/Adyen subscribers instead.
+
+### shop-service
+```
+GET  /api/v1/shop/products                           (public — catalog browsing)
+GET  /api/v1/shop/products/{id}                       (public)
+GET  /api/v1/shop/products/{id}/image                 (public — serves an uploaded photo)
+POST /api/v1/shop/admin/products/{id}/image           (admin only, X-User-Role: ADMIN)
+  Body: multipart/form-data { image: File }
+
+GET  /api/v1/shop/cart                                (public — guest via X-Cart-Token or account via X-User-Id)
+POST /api/v1/shop/cart/items          { productId, quantity }
+PUT  /api/v1/shop/cart/items/{productId}  { quantity }
+POST /api/v1/shop/cart/merge          { guestToken }   (authenticated — folds a guest cart in after login)
+
+POST /api/v1/shop/checkout            { guestEmail?, successUrl, cancelUrl } → { orderId, checkoutUrl }
+  (public for guests — guestEmail required when checking out without an account)
+POST /api/v1/shop/webhook/stripe      (Stripe calls this directly; signature-verified in the service)
+
+GET  /api/v1/shop/orders/lookup?orderId=&email=       (public — guest order tracking)
+GET  /api/v1/shop/orders                              (X-User-Id — the caller's own orders)
+GET  /api/v1/shop/orders/{id}                         (X-User-Id — must own the order)
+POST /api/v1/shop/orders/{id}/returns          { reason }
+GET  /api/v1/shop/orders/admin                        (admin only — every order, newest first)
+PATCH /api/v1/shop/orders/{id}/returns/approve        (admin only)
+```
 
 ## Security Architecture
 
