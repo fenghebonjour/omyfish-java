@@ -41,6 +41,11 @@
             <version>29.0.0</version>
         </dependency>
         <dependency>
+            <groupId>com.adyen</groupId>
+            <artifactId>adyen-java-api-library</artifactId>
+            <version>41.1.0</version>
+        </dependency>
+        <dependency>
             <groupId>io.minio</groupId>
             <artifactId>minio</artifactId>
             <version>8.5.10</version>

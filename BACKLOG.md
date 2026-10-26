@@ -938,3 +938,81 @@ bad signature / failed deserialization) — those three are still
 indistinguishable from the HTTP response alone, though the new per-branch
 logging now disambiguates them server-side. Not fixed here since it wasn't
 what broke this time and wasn't asked for.
+
+---
+
+## [ ] M — Dedup Stripe integration plumbing between identity-service and shop-service
+
+**Not started.** Found 2026-10-26 while comparing the two services' payment
+code: `identity-service`'s `StripePaymentAdapter` (subscriptions, behind the
+3-processor `PaymentProcessorRegistry`) and `shop-service`'s
+`StripeCheckoutAdapter` (one-shot cart checkout) are two fully independent
+integrations against the Stripe Java SDK — nothing shared between them.
+`shop-service`'s own comments admit the duplication
+(`StripeCheckoutAdapter.java:30-32`, `:174-176`): its timeout values and its
+`getObject()`-empty -> `deserializeUnsafe()` fallback for the `api_version`
+mismatch bug (item L above) were both manually copied by reading
+`identity-service`'s adapter, not reused as code. If either gets fixed again,
+there's no mechanism that propagates the fix to the other.
+
+The two `PaymentPort` interfaces should stay separate — subscriptions and
+one-shot cart checkout are genuinely different operations, per the existing
+doc comment on `shop-service`'s `PaymentPort.java:10-12` — but the low-level
+"how to safely call Stripe" plumbing (connect/read timeout policy, the
+api_version/`deserializeUnsafe` webhook fallback, possibly idempotency-key
+wiring) doesn't depend on which domain is calling it. Candidate fix: a small
+shared module (e.g. `shared/omyfish-shared-stripe`, alongside the existing
+`shared/omyfish-shared-domain`/`shared/omyfish-shared-events`) exposing that
+plumbing as a thin wrapper each adapter constructs with its own API
+key/webhook secret, so a fix lands once instead of twice.
+
+Not sized or scoped yet — parking-lot entry only.
+
+---
+
+## [x] N — Bring PayPal + Adyen to shop-service's one-shot checkout
+
+**Status:** DONE (2026-10-26). Ports identity-service's 3-processor pattern (item I.6) to
+shop-service's cart checkout — `PaymentPort` there is a different, one-shot-shaped interface
+from identity-service's subscription one (kept deliberately separate, per the existing doc
+comment on `PaymentPort.java:10-12`); this item adds siblings to `StripeCheckoutAdapter`
+without touching that separation.
+
+- `PaymentPort` gained `name()`; `ShopPaymentProcessorRegistry` (same shape as identity-service's
+  `PaymentProcessorRegistry`) picks a configured default for new checkouts and resolves by name
+  for refunds/webhooks. `Order` gained a `paymentProcessor` column (`V8`) — `stripeSessionId`/
+  `stripePaymentIntentId` keep their Stripe-era names even though they now also hold PayPal's
+  order/capture id or Adyen's reference/pspReference, same precedent as `Subscription`'s own
+  fields post-multi-acquirer.
+- **`PayPalCheckoutAdapter`** (Orders v2, not Subscriptions — a different API family from
+  identity-service's PayPal adapter): creates an order (`intent=CAPTURE`), returns the approve
+  link as `checkoutUrl`. Since this app's checkout is entirely webhook-driven (no backend
+  "return" endpoint the browser hits), the explicit capture PayPal requires happens *inside*
+  `verifyWebhook` on `CHECKOUT.ORDER.APPROVED`; a redelivered approval after a capture already
+  succeeded hits PayPal's `ORDER_ALREADY_CAPTURED` error, handled by falling back to GET-ing the
+  order's existing capture rather than failing the webhook.
+- **`AdyenCheckoutAdapter`**: same Sessions call identity-service's Adyen adapter makes, minus
+  the recurring-payment fields. `checkoutUrl` holds a `{sessionId, sessionData}` JSON blob
+  (same trick as that adapter's `clientSecret`) since Adyen's Sessions response isn't a redirect
+  URL. **Known gap:** Adyen's Drop-in has no address-collection step, so an Adyen-paid order's
+  `shippingAddress` stays null — fulfillment would need a frontend form wired to Adyen's
+  `deliveryAddress`, outside this backend repo.
+- **`StaleOrderSweepJob`** (new): neither PayPal Orders v2 nor Adyen Sessions fires a webhook for
+  an abandoned checkout the way Stripe's `checkout.session.expired` does, so a `@Scheduled` sweep
+  (3h default timeout) now cancels+restocks any `PENDING_PAYMENT` order past that window,
+  regardless of processor — also closes Stripe's own prior single-point-of-failure (a dropped
+  expiry webhook left stock stuck too).
+- Gateway's public-route whitelist generalized from `/api/v1/shop/webhook/stripe` to the
+  `/api/v1/shop/webhook` prefix (mirrors `/api/v1/billing/webhook/{processor}`); `CheckoutController`
+  and `ConfirmPaymentWebhookUseCase` gained a `processor` path variable/parameter.
+- **Known gap, same as identity-service's item I.6:** no adapter-level HTTP tests for
+  `PayPalCheckoutAdapter`/`AdyenCheckoutAdapter` — no sandbox credentials in this environment to
+  verify against. `ShopPaymentProcessorRegistryTest`/`StaleOrderSweepJobTest` added;
+  `CheckoutOrchestrationServiceTest`/`OrderServiceTest`/`ShopCheckoutFlowIT` updated for the
+  registry refactor.
+
+Verified via `mvn test -pl services/shop-service -am` (41/41 green) and
+`mvn test -pl services/api-gateway -am` (16/16 green, confirming the route-contract change).
+`mvn clean package -DskipTests -pl services/shop-service -am` confirms the new Adyen dependency
+resolves. No live Stripe/PayPal/Adyen sandbox run in this environment — the already-working
+Stripe path is covered by the updated unit/IT tests only, not a manual `make build-up` checkout.

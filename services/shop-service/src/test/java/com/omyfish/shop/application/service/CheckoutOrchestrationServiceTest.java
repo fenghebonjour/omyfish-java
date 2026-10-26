@@ -29,6 +29,7 @@ class CheckoutOrchestrationServiceTest {
     @Mock ReserveOrderUseCase reserveOrder;
     @Mock CancelOrderUseCase cancelOrder;
     @Mock OrderRepository orderRepository;
+    @Mock ShopPaymentProcessorRegistry processors;
     @Mock PaymentPort paymentPort;
     @InjectMocks CheckoutOrchestrationService service;
 
@@ -39,7 +40,8 @@ class CheckoutOrchestrationServiceTest {
         Order order = Order.createPendingPayment(userId, null,
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
 
-        when(paymentPort.isConfigured()).thenReturn(true);
+        when(processors.defaultProcessor()).thenReturn(Optional.of(paymentPort));
+        lenient().when(paymentPort.name()).thenReturn("stripe");
         when(reserveOrder.reserve(owner, null)).thenReturn(order);
         when(paymentPort.createCheckoutSession(eq(order.getId()), any(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_1", "https://stripe.test/sess_1")));
@@ -59,7 +61,8 @@ class CheckoutOrchestrationServiceTest {
         Order order = Order.createPendingPayment(null, "guest@example.com",
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
 
-        when(paymentPort.isConfigured()).thenReturn(true);
+        when(processors.defaultProcessor()).thenReturn(Optional.of(paymentPort));
+        lenient().when(paymentPort.name()).thenReturn("stripe");
         when(reserveOrder.reserve(owner, "guest@example.com")).thenReturn(order);
         when(paymentPort.createCheckoutSession(
                 eq(order.getId()), any(), anyString(), anyString(), anyString(), eq("guest@example.com")))
@@ -77,7 +80,7 @@ class CheckoutOrchestrationServiceTest {
     @Test
     void checkout_paymentNotConfigured_throwsWithoutReservingStock() {
         CartOwner owner = CartOwner.ofUser(UUID.randomUUID());
-        when(paymentPort.isConfigured()).thenReturn(false);
+        when(processors.defaultProcessor()).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.checkout(owner, null, "https://ok", "https://cancel"))
             .isInstanceOf(IllegalStateException.class);
@@ -92,7 +95,8 @@ class CheckoutOrchestrationServiceTest {
         Order order = Order.createPendingPayment(userId, null,
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
 
-        when(paymentPort.isConfigured()).thenReturn(true);
+        when(processors.defaultProcessor()).thenReturn(Optional.of(paymentPort));
+        lenient().when(paymentPort.name()).thenReturn("stripe");
         when(reserveOrder.reserve(owner, null)).thenReturn(order);
         when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
             .thenThrow(new IllegalStateException("Stripe is down"));
@@ -107,16 +111,17 @@ class CheckoutOrchestrationServiceTest {
     void handleWebhook_sessionCompleted_marksOrderPaidAndStoresShippingAddress() {
         Order order = Order.createPendingPayment(UUID.randomUUID(), null,
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
-        order.attachCheckoutSession("sess_1");
+        order.attachCheckoutSession("sess_1", "stripe");
         ShippingAddress shippingAddress = new ShippingAddress(
             "Jane Angler", "123 Lake St", null, "Montreal", "QC", "H2X 1Y6", "CA");
 
+        when(processors.byName("stripe")).thenReturn(paymentPort);
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.of(
             new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_1", "pi_1", shippingAddress)));
         when(orderRepository.findByStripeSessionId("sess_1")).thenReturn(Optional.of(order));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        boolean handled = service.handleWebhook("{}", Map.of("stripe-signature", "sig"));
+        boolean handled = service.handleWebhook("stripe", "{}", Map.of("stripe-signature", "sig"));
 
         assertThat(handled).isTrue();
         assertThat(order.getStatus().name()).isEqualTo("PAID");
@@ -127,13 +132,14 @@ class CheckoutOrchestrationServiceTest {
     void handleWebhook_sessionExpired_cancelsAndRestocks() {
         Order order = Order.createPendingPayment(UUID.randomUUID(), null,
             List.of(new OrderLine(UUID.randomUUID(), "Jig", 999, 1)));
-        order.attachCheckoutSession("sess_1");
+        order.attachCheckoutSession("sess_1", "stripe");
 
+        when(processors.byName("stripe")).thenReturn(paymentPort);
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.of(
             new PaymentPort.PaymentEvent(PaymentPort.PaymentEventType.SESSION_EXPIRED, "sess_1", null, null)));
         when(orderRepository.findByStripeSessionId("sess_1")).thenReturn(Optional.of(order));
 
-        boolean handled = service.handleWebhook("{}", Map.of("stripe-signature", "sig"));
+        boolean handled = service.handleWebhook("stripe", "{}", Map.of("stripe-signature", "sig"));
 
         assertThat(handled).isTrue();
         verify(cancelOrder).cancelAndRestock(order.getId());
@@ -141,9 +147,20 @@ class CheckoutOrchestrationServiceTest {
 
     @Test
     void handleWebhook_invalidSignature_returnsFalse() {
+        when(processors.byName("stripe")).thenReturn(paymentPort);
         when(paymentPort.verifyWebhook(anyString(), any())).thenReturn(Optional.empty());
 
-        boolean handled = service.handleWebhook("{}", Map.of());
+        boolean handled = service.handleWebhook("stripe", "{}", Map.of());
+
+        assertThat(handled).isFalse();
+        verifyNoInteractions(orderRepository);
+    }
+
+    @Test
+    void handleWebhook_unknownProcessor_returnsFalse() {
+        when(processors.byName("bitcoin")).thenThrow(new IllegalStateException("Unknown or unconfigured payment processor: bitcoin"));
+
+        boolean handled = service.handleWebhook("bitcoin", "{}", Map.of());
 
         assertThat(handled).isFalse();
         verifyNoInteractions(orderRepository);

@@ -3,6 +3,7 @@ package com.omyfish.shop;
 import com.omyfish.shop.domain.model.OrderStatus;
 import com.omyfish.shop.domain.model.valueobject.CartOwner;
 import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
+import com.omyfish.shop.adapter.out.payment.StripeCheckoutAdapter;
 import com.omyfish.shop.domain.port.in.AddToCartUseCase;
 import com.omyfish.shop.domain.port.in.CheckoutUseCase;
 import com.omyfish.shop.domain.port.in.ConfirmPaymentWebhookUseCase;
@@ -55,7 +56,10 @@ class ShopCheckoutFlowIT {
     @Autowired ConfirmPaymentWebhookUseCase confirmPaymentWebhookUseCase;
     @Autowired GetOrderUseCase getOrderUseCase;
 
-    @MockBean PaymentPort paymentPort;
+    // Declared as the concrete adapter type, not PaymentPort: three real PaymentPort beans
+    // (Stripe/PayPal/Adyen) now exist in the context, so @MockBean needs an unambiguous type
+    // to know which one to replace.
+    @MockBean StripeCheckoutAdapter paymentPort;
 
     @Test
     void checkoutThenWebhook_movesOrderFromPendingPaymentToPaid() {
@@ -63,6 +67,7 @@ class ShopCheckoutFlowIT {
         CartOwner owner = CartOwner.ofUser(userId);
         addToCartUseCase.addItem(owner, SEEDED_PRODUCT_ID, 2);
 
+        when(paymentPort.name()).thenReturn("stripe");
         when(paymentPort.isConfigured()).thenReturn(true);
         when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_it_1", "https://stripe.test/sess_it_1")));
@@ -77,7 +82,8 @@ class ShopCheckoutFlowIT {
             new PaymentPort.PaymentEvent(
                 PaymentPort.PaymentEventType.SESSION_COMPLETED, "sess_it_1", "pi_it_1", shippingAddress)));
 
-        boolean handled = confirmPaymentWebhookUseCase.handleWebhook("{}", Map.of("stripe-signature", "sig"));
+        boolean handled =
+            confirmPaymentWebhookUseCase.handleWebhook("stripe", "{}", Map.of("stripe-signature", "sig"));
 
         assertThat(handled).isTrue();
         var paidOrder = getOrderUseCase.get(checkoutResult.orderId(), userId);

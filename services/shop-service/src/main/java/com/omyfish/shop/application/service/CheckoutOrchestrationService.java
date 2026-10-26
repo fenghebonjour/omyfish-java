@@ -19,27 +19,26 @@ public class CheckoutOrchestrationService implements CheckoutUseCase, ConfirmPay
     private final ReserveOrderUseCase reserveOrder;
     private final CancelOrderUseCase cancelOrder;
     private final OrderRepository orderRepository;
-    private final PaymentPort paymentPort;
+    private final ShopPaymentProcessorRegistry processors;
 
     public CheckoutOrchestrationService(
         ReserveOrderUseCase reserveOrder, CancelOrderUseCase cancelOrder,
-        OrderRepository orderRepository, PaymentPort paymentPort
+        OrderRepository orderRepository, ShopPaymentProcessorRegistry processors
     ) {
         this.reserveOrder = reserveOrder;
         this.cancelOrder = cancelOrder;
         this.orderRepository = orderRepository;
-        this.paymentPort = paymentPort;
+        this.processors = processors;
     }
 
     @Override
     public CheckoutResult checkout(CartOwner owner, String guestEmail, String successUrl, String cancelUrl) {
-        if (!paymentPort.isConfigured()) {
-            throw new IllegalStateException("No payment processor is configured");
-        }
+        PaymentPort paymentPort = processors.defaultProcessor()
+            .orElseThrow(() -> new IllegalStateException("No payment processor is configured"));
 
         // Stock is decremented and the order is created in its own DB transaction (via the
-        // reserveOrder wrapper) BEFORE the Stripe call below, so the Stripe HTTP round-trip
-        // never holds a DB transaction open. If the Stripe call then fails, cancelOrder
+        // reserveOrder wrapper) BEFORE the processor call below, so the HTTP round-trip never
+        // holds a DB transaction open. If the processor call then fails, cancelOrder
         // compensates by restocking and cancelling the order it just created.
         Order order = reserveOrder.reserve(owner, guestEmail);
 
@@ -61,14 +60,21 @@ public class CheckoutOrchestrationService implements CheckoutUseCase, ConfirmPay
             throw new IllegalStateException("No payment processor is configured");
         }
 
-        order.attachCheckoutSession(session.get().sessionId());
+        order.attachCheckoutSession(session.get().sessionId(), paymentPort.name());
         orderRepository.save(order);
 
         return new CheckoutResult(order.getId(), session.get().checkoutUrl());
     }
 
     @Override
-    public boolean handleWebhook(String payload, Map<String, String> headers) {
+    public boolean handleWebhook(String processor, String payload, Map<String, String> headers) {
+        PaymentPort paymentPort;
+        try {
+            paymentPort = processors.byName(processor);
+        } catch (IllegalStateException e) {
+            return false;
+        }
+
         Optional<PaymentPort.PaymentEvent> eventOpt = paymentPort.verifyWebhook(payload, headers);
         if (eventOpt.isEmpty()) {
             return false;
@@ -81,7 +87,7 @@ public class CheckoutOrchestrationService implements CheckoutUseCase, ConfirmPay
         }
         Order order = orderOpt.get();
 
-        // Status guards make webhook retries idempotent — Stripe may redeliver the same event.
+        // Status guards make webhook retries idempotent — a processor may redeliver the same event.
         switch (event.type()) {
             case SESSION_COMPLETED -> {
                 if (order.getStatus() == OrderStatus.PENDING_PAYMENT) {

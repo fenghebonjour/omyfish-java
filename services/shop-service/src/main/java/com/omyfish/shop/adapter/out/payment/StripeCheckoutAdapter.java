@@ -47,6 +47,11 @@ public class StripeCheckoutAdapter implements PaymentPort {
     }
 
     @Override
+    public String name() {
+        return "stripe";
+    }
+
+    @Override
     public boolean isConfigured() {
         return !secretKey.isBlank();
     }

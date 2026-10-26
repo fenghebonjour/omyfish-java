@@ -11,7 +11,6 @@ import com.omyfish.shop.domain.port.in.ListOrdersUseCase;
 import com.omyfish.shop.domain.port.in.LookupGuestOrderUseCase;
 import com.omyfish.shop.domain.port.in.RequestReturnUseCase;
 import com.omyfish.shop.domain.port.out.OrderRepository;
-import com.omyfish.shop.domain.port.out.PaymentPort;
 import com.omyfish.shop.domain.port.out.ProductRepository;
 
 import java.util.List;
@@ -23,14 +22,14 @@ public class OrderService implements
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
-    private final PaymentPort paymentPort;
+    private final ShopPaymentProcessorRegistry processors;
 
     public OrderService(
-        OrderRepository orderRepository, ProductRepository productRepository, PaymentPort paymentPort
+        OrderRepository orderRepository, ProductRepository productRepository, ShopPaymentProcessorRegistry processors
     ) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
-        this.paymentPort = paymentPort;
+        this.processors = processors;
     }
 
     @Override
@@ -57,7 +56,8 @@ public class OrderService implements
 
         order.approveReturn();
 
-        paymentPort.refund(order.getStripePaymentIntentId(), order.getTotalCents(), orderId.toString());
+        processors.byName(order.getPaymentProcessor())
+            .refund(order.getStripePaymentIntentId(), order.getTotalCents(), orderId.toString());
 
         order.getLines().forEach(line -> {
             Product product = productRepository.findById(line.productId())

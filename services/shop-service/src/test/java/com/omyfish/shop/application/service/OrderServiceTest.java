@@ -31,6 +31,7 @@ class OrderServiceTest {
 
     @Mock OrderRepository orderRepository;
     @Mock ProductRepository productRepository;
+    @Mock ShopPaymentProcessorRegistry processors;
     @Mock PaymentPort paymentPort;
     @InjectMocks OrderService service;
 
@@ -64,6 +65,7 @@ class OrderServiceTest {
         UUID productId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         Order order = Order.createPendingPayment(userId, null, List.of(new OrderLine(productId, "Jig", 999, 2)));
+        order.attachCheckoutSession("sess_1", "stripe");
         order.markPaid("pi_1", null);
         order.requestReturn("no longer needed");
         Product product = Product.reconstitute(productId, "Jig", "desc", 999, "img.jpg", 5, true);
@@ -72,6 +74,7 @@ class OrderServiceTest {
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(productRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(processors.byName("stripe")).thenReturn(paymentPort);
         when(paymentPort.refund(anyString(), anyLong(), anyString())).thenReturn(Optional.empty());
 
         Order result = service.approveReturn(order.getId());

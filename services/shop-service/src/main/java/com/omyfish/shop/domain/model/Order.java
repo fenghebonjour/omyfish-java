@@ -21,6 +21,12 @@ public class Order extends Entity<UUID> {
     private OrderStatus status;
     private String stripeSessionId;
     private String stripePaymentIntentId;
+    // Which PaymentPort adapter owns this order's ids above — those fields keep their Stripe
+    // name for the same reason identity-service's Subscription.stripeCustomerId/
+    // stripeSubscriptionId do post-multi-acquirer: no behavioral upside to renaming them, this
+    // field is what actually disambiguates whose id format they hold (PayPal order/capture id,
+    // Adyen reference/pspReference, etc).
+    private String paymentProcessor;
     private final Instant createdAt;
     private Instant paidAt;
     private Instant returnRequestedAt;
@@ -29,7 +35,7 @@ public class Order extends Entity<UUID> {
     private ShippingAddress shippingAddress;
 
     private Order(UUID id, UUID userId, String guestEmail, List<OrderLine> lines, long totalCents, OrderStatus status,
-                  String stripeSessionId, String stripePaymentIntentId, Instant createdAt,
+                  String stripeSessionId, String stripePaymentIntentId, String paymentProcessor, Instant createdAt,
                   Instant paidAt, Instant returnRequestedAt, Instant returnedAt, String returnReason,
                   ShippingAddress shippingAddress) {
         super(id);
@@ -43,6 +49,7 @@ public class Order extends Entity<UUID> {
         this.status = status;
         this.stripeSessionId = stripeSessionId;
         this.stripePaymentIntentId = stripePaymentIntentId;
+        this.paymentProcessor = paymentProcessor;
         this.createdAt = createdAt;
         this.paidAt = paidAt;
         this.returnRequestedAt = returnRequestedAt;
@@ -54,19 +61,21 @@ public class Order extends Entity<UUID> {
     public static Order createPendingPayment(UUID userId, String guestEmail, List<OrderLine> lines) {
         long total = lines.stream().mapToLong(OrderLine::subtotalCents).sum();
         return new Order(UUID.randomUUID(), userId, guestEmail, lines, total, OrderStatus.PENDING_PAYMENT,
-            null, null, Instant.now(), null, null, null, null, null);
+            null, null, null, Instant.now(), null, null, null, null, null);
     }
 
     public static Order reconstitute(UUID id, UUID userId, String guestEmail, List<OrderLine> lines, long totalCents,
                                       OrderStatus status, String stripeSessionId, String stripePaymentIntentId,
-                                      Instant createdAt, Instant paidAt, Instant returnRequestedAt,
-                                      Instant returnedAt, String returnReason, ShippingAddress shippingAddress) {
+                                      String paymentProcessor, Instant createdAt, Instant paidAt,
+                                      Instant returnRequestedAt, Instant returnedAt, String returnReason,
+                                      ShippingAddress shippingAddress) {
         return new Order(id, userId, guestEmail, lines, totalCents, status, stripeSessionId, stripePaymentIntentId,
-            createdAt, paidAt, returnRequestedAt, returnedAt, returnReason, shippingAddress);
+            paymentProcessor, createdAt, paidAt, returnRequestedAt, returnedAt, returnReason, shippingAddress);
     }
 
-    public void attachCheckoutSession(String stripeSessionId) {
+    public void attachCheckoutSession(String stripeSessionId, String paymentProcessor) {
         this.stripeSessionId = stripeSessionId;
+        this.paymentProcessor = paymentProcessor;
     }
 
     public void markPaid(String stripePaymentIntentId, ShippingAddress shippingAddress) {
@@ -112,6 +121,7 @@ public class Order extends Entity<UUID> {
     public OrderStatus getStatus() { return status; }
     public String getStripeSessionId() { return stripeSessionId; }
     public String getStripePaymentIntentId() { return stripePaymentIntentId; }
+    public String getPaymentProcessor() { return paymentProcessor; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getPaidAt() { return paidAt; }
     public Instant getReturnRequestedAt() { return returnRequestedAt; }

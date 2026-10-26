@@ -31,7 +31,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
         "/api/v1/observations/geojson",
         "/api/v1/billing/webhook",  // Stripe/PayPal/Adyen call this; signature-verified in the service
         "/api/v1/shop/products",    // catalog browsing is anonymous-friendly, like species
-        "/api/v1/shop/webhook/stripe",  // Stripe calls this directly; signature-verified in the service
+        "/api/v1/shop/webhook",     // Stripe/PayPal/Adyen call this; signature-verified in the service
         "/api/v1/shop/cart",        // guest checkout — cart must work without an account
         "/api/v1/shop/checkout",    // guest checkout — a guest pays with a guestEmail instead of X-User-Id
         "/api/v1/shop/orders/lookup"  // guest order tracking by orderId+email, no account needed

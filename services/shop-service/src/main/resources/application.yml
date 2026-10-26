@@ -31,6 +31,31 @@ stripe:
   shop-webhook-secret: ${STRIPE_SHOP_WEBHOOK_SECRET:}
   currency: ${STRIPE_SHOP_CURRENCY:cad}
 
+# client-id/secret and api-key/merchant-account are the account-level credentials, shared with
+# identity-service's billing module; the webhook id/HMAC key are per-endpoint and must be their
+# own (a separate webhook subscription for this service's own callback URL), same reasoning as
+# stripe.shop-webhook-secret above.
+paypal:
+  client-id: ${PAYPAL_CLIENT_ID:}
+  client-secret: ${PAYPAL_CLIENT_SECRET:}
+  base-url: ${PAYPAL_BASE_URL:https://api-m.sandbox.paypal.com}
+  shop-webhook-id: ${PAYPAL_SHOP_WEBHOOK_ID:}
+
+adyen:
+  api-key: ${ADYEN_API_KEY:}
+  merchant-account: ${ADYEN_MERCHANT_ACCOUNT:}
+  environment: ${ADYEN_ENVIRONMENT:TEST}
+  currency: ${ADYEN_SHOP_CURRENCY:cad}
+  shop-hmac-key: ${ADYEN_SHOP_HMAC_KEY:}
+
+payment:
+  default-processor: ${SHOP_PAYMENT_DEFAULT_PROCESSOR:stripe}
+
+shop:
+  stale-order-sweep:
+    timeout-minutes: ${STALE_ORDER_TIMEOUT_MINUTES:180}
+    interval-minutes: ${STALE_ORDER_SWEEP_INTERVAL_MINUTES:30}
+
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:omyfish}

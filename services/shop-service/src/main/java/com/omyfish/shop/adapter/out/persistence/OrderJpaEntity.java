@@ -44,6 +44,7 @@ class OrderJpaEntity {
 
     private String stripeSessionId;
     private String stripePaymentIntentId;
+    private String paymentProcessor;
     private Instant createdAt;
     private Instant paidAt;
     private Instant returnRequestedAt;
@@ -74,6 +75,7 @@ class OrderJpaEntity {
         e.status = order.getStatus();
         e.stripeSessionId = order.getStripeSessionId();
         e.stripePaymentIntentId = order.getStripePaymentIntentId();
+        e.paymentProcessor = order.getPaymentProcessor();
         e.createdAt = order.getCreatedAt();
         e.paidAt = order.getPaidAt();
         e.returnRequestedAt = order.getReturnRequestedAt();
@@ -98,7 +100,7 @@ class OrderJpaEntity {
             shippingPostalCode, shippingCountry);
         return Order.reconstitute(
             id, userId, guestEmail, lines.stream().map(OrderLineEmbeddable::toDomain).toList(), totalCents, status,
-            stripeSessionId, stripePaymentIntentId, createdAt, paidAt, returnRequestedAt, returnedAt, returnReason,
-            shippingAddress);
+            stripeSessionId, stripePaymentIntentId, paymentProcessor, createdAt, paidAt, returnRequestedAt,
+            returnedAt, returnReason, shippingAddress);
     }
 }

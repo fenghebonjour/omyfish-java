@@ -45,15 +45,15 @@ public class CheckoutController {
         return ResponseEntity.ok(response);
     }
 
-    // Public — Stripe calls this directly, no account/JWT involved; signature-verified inside
-    // the use case instead. Whitelisted in the gateway AuthFilter.
-    @PostMapping("/webhook/stripe")
+    // Public — Stripe/PayPal/Adyen call this directly, no account/JWT involved;
+    // signature-verified inside the use case instead. Whitelisted in the gateway AuthFilter.
+    @PostMapping("/webhook/{processor}")
     public ResponseEntity<Map<String, Boolean>> webhook(
-        @RequestBody String payload, @RequestHeader Map<String, String> rawHeaders
+        @PathVariable String processor, @RequestBody String payload, @RequestHeader Map<String, String> rawHeaders
     ) {
         Map<String, String> headers = new LinkedHashMap<>();
         rawHeaders.forEach((key, value) -> headers.put(key.toLowerCase(), value));
-        boolean handled = confirmPaymentWebhookUseCase.handleWebhook(payload, headers);
+        boolean handled = confirmPaymentWebhookUseCase.handleWebhook(processor, payload, headers);
         return ResponseEntity.ok(Map.of("handled", handled));
     }
 }

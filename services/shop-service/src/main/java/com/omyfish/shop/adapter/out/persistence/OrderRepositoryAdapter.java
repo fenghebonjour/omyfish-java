@@ -1,9 +1,11 @@
 package com.omyfish.shop.adapter.out.persistence;
 
 import com.omyfish.shop.domain.model.Order;
+import com.omyfish.shop.domain.model.OrderStatus;
 import com.omyfish.shop.domain.port.out.OrderRepository;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +44,13 @@ public class OrderRepositoryAdapter implements OrderRepository {
     @Override
     public List<Order> findAll() {
         return jpaRepository.findAllByOrderByCreatedAtDesc().stream()
+            .map(OrderJpaEntity::toDomain)
+            .toList();
+    }
+
+    @Override
+    public List<Order> findPendingPaymentOlderThan(Instant cutoff) {
+        return jpaRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING_PAYMENT, cutoff).stream()
             .map(OrderJpaEntity::toDomain)
             .toList();
     }

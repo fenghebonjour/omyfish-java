@@ -27,6 +27,9 @@ public interface PaymentPort {
         ShippingAddress shippingAddress
     ) {}
 
+    /** Stable id for this adapter, e.g. "stripe" — used to route refunds/webhooks by processor. */
+    String name();
+
     boolean isConfigured();
 
     // customerEmail pre-fills/locks Stripe's own email field — pass the guest's email for a

@@ -42,7 +42,7 @@ class GatewayPublicRoutesContractTest {
         "/api/v1/shop/products",
         "/api/v1/shop/products/{id}",
         "/api/v1/shop/products/{id}/image",
-        "/api/v1/shop/webhook/stripe",
+        "/api/v1/shop/webhook/{processor}",
         "/api/v1/shop/cart",
         "/api/v1/shop/cart/items",
         "/api/v1/shop/cart/items/{productId}",
