@@ -1,7 +1,7 @@
 package com.omyfish.identity.adapter.out.payment;
 
 import com.omyfish.identity.domain.port.out.PaymentPort;
-import com.stripe.exception.EventDataObjectDeserializationException;
+import com.omyfish.shared.stripe.StripeHttpSupport;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Customer;
 import com.stripe.model.Event;
@@ -23,8 +23,6 @@ import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
 import com.stripe.param.SubscriptionListParams;
 import com.stripe.param.billingportal.SessionCreateParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -38,18 +36,10 @@ import java.util.UUID;
 @Component
 public class StripePaymentAdapter implements PaymentPort {
 
-    private static final Logger log = LoggerFactory.getLogger(StripePaymentAdapter.class);
-
-    // Same timeout discipline as AIServiceAdapter's WebClient fix (WEAKNESS_AUDIT.md §2.1) — a
-    // slow (not down) Stripe must not hang a request indefinitely. No retries added: a failed
-    // charge/subscription-create must never be retried without an idempotency key in place
-    // (BACKLOG item I.1, already done), so retrying here would risk a double-charge.
-    private static final int CONNECT_TIMEOUT_MS = 10_000;
-    private static final int READ_TIMEOUT_MS = 15_000;
-
     private final String secretKey;
     private final String webhookSecret;
     private final Map<String, String> priceIds;
+    private final StripeHttpSupport stripe;
 
     public StripePaymentAdapter(
         @Value("${stripe.secret-key:}") String secretKey,
@@ -60,6 +50,7 @@ public class StripePaymentAdapter implements PaymentPort {
         this.secretKey = secretKey;
         this.webhookSecret = webhookSecret;
         this.priceIds = Map.of("monthly", priceMonthly, "yearly", priceYearly);
+        this.stripe = new StripeHttpSupport(secretKey);
     }
 
     @Override
@@ -73,10 +64,7 @@ public class StripePaymentAdapter implements PaymentPort {
     }
 
     private RequestOptions.RequestOptionsBuilder baseOptions() {
-        return RequestOptions.builder()
-            .setApiKey(secretKey)
-            .setConnectTimeout(CONNECT_TIMEOUT_MS)
-            .setReadTimeout(READ_TIMEOUT_MS);
+        return stripe.baseOptions();
     }
 
     @Override
@@ -335,24 +323,8 @@ public class StripePaymentAdapter implements PaymentPort {
         };
     }
 
-    // getObject() comes back empty whenever the event's api_version doesn't match this SDK's
-    // compiled version (BACKLOG item L) — common in sandboxes, not just malformed payloads.
-    // deserializeUnsafe() ignores that version check; it only fails for a genuinely incompatible
-    // schema, which EventDataObjectDeserializationException still catches below.
+    // See StripeHttpSupport.deserializeEventObject (BACKLOG item M) for why this fallback exists.
     private <T extends StripeObject> T deserializeEventObject(Event event, Class<T> type) {
-        Optional<StripeObject> safe = event.getDataObjectDeserializer().getObject();
-        if (safe.isPresent()) {
-            return type.cast(safe.get());
-        }
-        log.warn("Stripe webhook {} ({}): getObject() returned empty — likely event api_version "
-                + "mismatch against the stripe-java SDK's compiled version (BACKLOG item L); "
-                + "falling back to deserializeUnsafe()", event.getId(), event.getType());
-        try {
-            return type.cast(event.getDataObjectDeserializer().deserializeUnsafe());
-        } catch (EventDataObjectDeserializationException e) {
-            log.warn("Stripe webhook {} ({}): deserializeUnsafe() also failed: {}",
-                    event.getId(), event.getType(), e.getMessage());
-            return null;
-        }
+        return stripe.deserializeEventObject(event, type);
     }
 }

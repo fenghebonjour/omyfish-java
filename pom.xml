@@ -15,6 +15,7 @@
     <modules>
         <module>shared/omyfish-shared-domain</module>
         <module>shared/omyfish-shared-events</module>
+        <module>shared/omyfish-shared-stripe</module>
         <module>services/identity-service</module>
         <module>services/species-service</module>
         <module>services/observation-service</module>
@@ -39,6 +40,7 @@
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <resilience4j.version>2.2.0</resilience4j.version>
         <springdoc.version>2.6.0</springdoc.version>
+        <stripe-java.version>29.0.0</stripe-java.version>
     </properties>
 
     <dependencyManagement>
@@ -70,6 +72,18 @@
                 <groupId>com.omyfish</groupId>
                 <artifactId>omyfish-shared-events</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.omyfish</groupId>
+                <artifactId>omyfish-shared-stripe</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Stripe SDK -->
+            <dependency>
+                <groupId>com.stripe</groupId>
+                <artifactId>stripe-java</artifactId>
+                <version>${stripe-java.version}</version>
             </dependency>
 
             <!-- JWT -->

@@ -941,32 +941,41 @@ what broke this time and wasn't asked for.
 
 ---
 
-## [ ] M — Dedup Stripe integration plumbing between identity-service and shop-service
+## [x] M — Dedup Stripe integration plumbing between identity-service and shop-service
 
-**Not started.** Found 2026-10-26 while comparing the two services' payment
-code: `identity-service`'s `StripePaymentAdapter` (subscriptions, behind the
-3-processor `PaymentProcessorRegistry`) and `shop-service`'s
-`StripeCheckoutAdapter` (one-shot cart checkout) are two fully independent
-integrations against the Stripe Java SDK — nothing shared between them.
-`shop-service`'s own comments admit the duplication
-(`StripeCheckoutAdapter.java:30-32`, `:174-176`): its timeout values and its
-`getObject()`-empty -> `deserializeUnsafe()` fallback for the `api_version`
-mismatch bug (item L above) were both manually copied by reading
-`identity-service`'s adapter, not reused as code. If either gets fixed again,
-there's no mechanism that propagates the fix to the other.
+**Status:** DONE (2026-10-26), scoped to exactly what this item describes — Stripe only.
+PayPal/Adyen now have the identical duplication problem after the same day's multi-acquirer
+work on shop-service (item N), but that's deliberately left as a fresh, not-yet-written
+follow-up rather than silently folded into this one.
 
-The two `PaymentPort` interfaces should stay separate — subscriptions and
-one-shot cart checkout are genuinely different operations, per the existing
-doc comment on `shop-service`'s `PaymentPort.java:10-12` — but the low-level
-"how to safely call Stripe" plumbing (connect/read timeout policy, the
-api_version/`deserializeUnsafe` webhook fallback, possibly idempotency-key
-wiring) doesn't depend on which domain is calling it. Candidate fix: a small
-shared module (e.g. `shared/omyfish-shared-stripe`, alongside the existing
-`shared/omyfish-shared-domain`/`shared/omyfish-shared-events`) exposing that
-plumbing as a thin wrapper each adapter constructs with its own API
-key/webhook secret, so a fix lands once instead of twice.
+New module `shared/omyfish-shared-stripe` (jar, alongside the existing
+`shared/omyfish-shared-domain`/`shared/omyfish-shared-events`), one class:
+`StripeHttpSupport(secretKey)` — not a Spring bean, each adapter constructs its own instance —
+exposing `baseOptions()` (the 10s-connect/15s-read timeout policy) and
+`deserializeEventObject(event, type)` (the `getObject()`-empty → `deserializeUnsafe()` fallback
+for the `api_version` mismatch bug, item L), both moved verbatim out of both adapters.
+`identity-service`'s `StripePaymentAdapter` and `shop-service`'s `StripeCheckoutAdapter` each
+keep a one-line private `baseOptions()`/`deserializeEventObject()` delegating to their own
+`StripeHttpSupport` field — smaller diff than updating every call site, same deduplication
+result (the actual duplicated logic is gone from both files). Both `PaymentPort` interfaces
+stay separate, as already decided — only the low-level HTTP/webhook plumbing moved.
 
-Not sized or scoped yet — parking-lot entry only.
+**Side cleanup, directly on-theme:** both services were independently hardcoding
+`<version>29.0.0</version>` on `stripe-java` — exactly the "fix doesn't propagate" problem this
+item is about. Centralized into a `stripe-java.version` property + managed dependency on the
+root `pom.xml`; both services' dependency entries now inherit it.
+
+New `StripeHttpSupportTest` in the shared module (timeouts + the api_version-mismatch fallback,
+built directly via `ApiResource.GSON.fromJson(...)` rather than a signed webhook payload, since
+this isolates the deserialization step from signature verification) — the first test any shared
+module has had. This is also the first direct test of this logic on `shop-service`'s side;
+identity-service already had `StripePaymentAdapterTest` covering it through `verifyWebhook()`,
+confirmed still green and still logging from `com.omyfish.shared.stripe.StripeHttpSupport` after
+the move (not a silently-passing no-op).
+
+Verified: full reactor `mvn clean package -DskipTests` (10/10 modules); `mvn test` on
+`shared/omyfish-shared-stripe` (3/3), `services/identity-service` (80/80), `services/shop-service`
+(41/41) — all green, no behavior change to either adapter's public API.
 
 ---
 

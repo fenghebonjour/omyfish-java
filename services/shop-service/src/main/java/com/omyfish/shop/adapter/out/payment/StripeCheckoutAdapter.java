@@ -1,8 +1,8 @@
 package com.omyfish.shop.adapter.out.payment;
 
+import com.omyfish.shared.stripe.StripeHttpSupport;
 import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shop.domain.port.out.PaymentPort;
-import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.Refund;
@@ -12,8 +12,6 @@ import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -25,16 +23,10 @@ import java.util.UUID;
 @Component
 public class StripeCheckoutAdapter implements PaymentPort {
 
-    private static final Logger log = LoggerFactory.getLogger(StripeCheckoutAdapter.class);
-
-    // Same timeout discipline as identity-service's StripePaymentAdapter — a slow Stripe must
-    // never hang a request indefinitely.
-    private static final int CONNECT_TIMEOUT_MS = 10_000;
-    private static final int READ_TIMEOUT_MS = 15_000;
-
     private final String secretKey;
     private final String webhookSecret;
     private final String currency;
+    private final StripeHttpSupport stripe;
 
     public StripeCheckoutAdapter(
         @Value("${stripe.secret-key:}") String secretKey,
@@ -44,6 +36,7 @@ public class StripeCheckoutAdapter implements PaymentPort {
         this.secretKey = secretKey;
         this.webhookSecret = webhookSecret;
         this.currency = currency;
+        this.stripe = new StripeHttpSupport(secretKey);
     }
 
     @Override
@@ -57,10 +50,7 @@ public class StripeCheckoutAdapter implements PaymentPort {
     }
 
     private RequestOptions.RequestOptionsBuilder baseOptions() {
-        return RequestOptions.builder()
-            .setApiKey(secretKey)
-            .setConnectTimeout(CONNECT_TIMEOUT_MS)
-            .setReadTimeout(READ_TIMEOUT_MS);
+        return stripe.baseOptions();
     }
 
     @Override
@@ -176,24 +166,8 @@ public class StripeCheckoutAdapter implements PaymentPort {
             address.getState(), address.getPostalCode(), address.getCountry());
     }
 
-    // getObject() comes back empty whenever the event's api_version doesn't match this SDK's
-    // compiled version (the same gotcha identity-service's StripePaymentAdapter documents) —
-    // common in sandboxes, not just malformed payloads. deserializeUnsafe() ignores that
-    // version check; it only fails for a genuinely incompatible schema.
+    // See StripeHttpSupport.deserializeEventObject (BACKLOG item M) for why this fallback exists.
     private <T extends StripeObject> T deserializeEventObject(Event event, Class<T> type) {
-        Optional<StripeObject> safe = event.getDataObjectDeserializer().getObject();
-        if (safe.isPresent()) {
-            return type.cast(safe.get());
-        }
-        log.warn("Stripe webhook {} ({}): getObject() returned empty — likely event api_version "
-                + "mismatch against the stripe-java SDK's compiled version; falling back to "
-                + "deserializeUnsafe()", event.getId(), event.getType());
-        try {
-            return type.cast(event.getDataObjectDeserializer().deserializeUnsafe());
-        } catch (EventDataObjectDeserializationException e) {
-            log.warn("Stripe webhook {} ({}): deserializeUnsafe() also failed: {}",
-                    event.getId(), event.getType(), e.getMessage());
-            return null;
-        }
+        return stripe.deserializeEventObject(event, type);
     }
 }
