@@ -19,6 +19,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +69,43 @@ class ShopPersistenceIT {
 
         assertThat(product.getName()).isEqualTo("ShadowStrike Walking Topwater");
         assertThat(product.getStockQuantity()).isEqualTo(50);
+    }
+
+    // Proves the fix for the real overselling bug this flash-sale hardening work found: the old
+    // load->decreaseStock()->save path let two concurrent checkouts both read the same
+    // stockQuantity and both decrement it. Stock is first drained down to exactly 5 units, then
+    // 20 threads race to take 1 unit each — against a real Postgres, not a mock, since only a
+    // real database proves the atomic conditional UPDATE actually serializes the decrements
+    // instead of losing some of them.
+    @Test
+    void tryDecreaseStock_underConcurrentCallers_neverOversells() throws InterruptedException {
+        UUID productId = UUID.fromString("11111111-1111-1111-1111-111111111002");
+        int available = productRepository.findById(productId).orElseThrow().getStockQuantity();
+        while (available > 5) {
+            productRepository.tryDecreaseStock(productId, available - 5);
+            available = productRepository.findById(productId).orElseThrow().getStockQuantity();
+        }
+        assertThat(available).isEqualTo(5);
+
+        int callers = 20;
+        AtomicInteger successes = new AtomicInteger();
+        ExecutorService pool = Executors.newFixedThreadPool(callers);
+        try {
+            for (int i = 0; i < callers; i++) {
+                pool.submit(() -> {
+                    if (productRepository.tryDecreaseStock(productId, 1)) {
+                        successes.incrementAndGet();
+                    }
+                });
+            }
+        } finally {
+            pool.shutdown();
+            assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        }
+
+        int remaining = productRepository.findById(productId).orElseThrow().getStockQuantity();
+        assertThat(successes.get()).isEqualTo(5);
+        assertThat(remaining).isZero();
     }
 
     @Test
