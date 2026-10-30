@@ -16,6 +16,9 @@ import com.adyen.service.checkout.PaymentsApi;
 import com.adyen.util.HMACValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.omyfish.shop.domain.port.out.PaymentPort;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -90,7 +93,14 @@ public class AdyenCheckoutAdapter implements PaymentPort {
         return !apiKey.isBlank() && !merchantAccount.isBlank();
     }
 
+    // Safe to retry: both calls below now pass idempotencyKey as Adyen's own RequestOptions
+    // idempotency key, so a retried attempt with the same key returns Adyen's original result
+    // instead of creating a duplicate session/refund. Same reasoning as StripeCheckoutAdapter's
+    // CircuitBreaker/Bulkhead.
     @Override
+    @Retry(name = "adyen")
+    @CircuitBreaker(name = "adyen")
+    @Bulkhead(name = "adyen")
     public Optional<CheckoutSession> createCheckoutSession(
         UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey,
         String customerEmail
@@ -110,7 +120,11 @@ public class AdyenCheckoutAdapter implements PaymentPort {
                 request.setShopperEmail(customerEmail);
             }
 
-            CreateCheckoutSessionResponse response = paymentsApi.sessions(request);
+            // Unlike refund() below, this call had no RequestOptions/idempotency key at all
+            // before — a bare retry (manual or Resilience4j's @Retry, added alongside this)
+            // would have created a second, duplicate Adyen session for the same order.
+            RequestOptions options = new RequestOptions().idempotencyKey(idempotencyKey);
+            CreateCheckoutSessionResponse response = paymentsApi.sessions(request, options);
             String checkoutUrl = objectMapper.writeValueAsString(
                 Map.of("sessionId", response.getId(), "sessionData", response.getSessionData()));
             return Optional.of(new CheckoutSession(response.getId(), checkoutUrl));
@@ -120,6 +134,9 @@ public class AdyenCheckoutAdapter implements PaymentPort {
     }
 
     @Override
+    @Retry(name = "adyen")
+    @CircuitBreaker(name = "adyen")
+    @Bulkhead(name = "adyen")
     public Optional<RefundResult> refund(String paymentIntentId, Long amountCents, String idempotencyKey) {
         if (!isConfigured() || paymentIntentId == null || paymentIntentId.isBlank()) {
             return Optional.empty();

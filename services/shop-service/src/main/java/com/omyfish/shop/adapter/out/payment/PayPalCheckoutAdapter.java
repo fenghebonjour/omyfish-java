@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.MissingNode;
 import com.omyfish.shop.domain.model.valueobject.ShippingAddress;
 import com.omyfish.shop.domain.port.out.PaymentPort;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -108,7 +111,14 @@ public class PayPalCheckoutAdapter implements PaymentPort {
         return cachedToken;
     }
 
+    // Safe to retry: every call below sends idempotencyKey as PayPal's own PayPal-Request-Id
+    // header, so a retried attempt with the same key returns PayPal's original result instead
+    // of creating a duplicate order/refund. Same reasoning as StripeCheckoutAdapter's
+    // CircuitBreaker/Bulkhead.
     @Override
+    @Retry(name = "paypal")
+    @CircuitBreaker(name = "paypal")
+    @Bulkhead(name = "paypal")
     public Optional<CheckoutSession> createCheckoutSession(
         UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey,
         String customerEmail
@@ -154,6 +164,9 @@ public class PayPalCheckoutAdapter implements PaymentPort {
     }
 
     @Override
+    @Retry(name = "paypal")
+    @CircuitBreaker(name = "paypal")
+    @Bulkhead(name = "paypal")
     public Optional<RefundResult> refund(String paymentIntentId, Long amountCents, String idempotencyKey) {
         if (!isConfigured() || paymentIntentId == null || paymentIntentId.isBlank()) {
             return Optional.empty();
