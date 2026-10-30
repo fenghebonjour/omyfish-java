@@ -13,6 +13,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -77,7 +79,12 @@ class ShopPersistenceIT {
     // 20 threads race to take 1 unit each — against a real Postgres, not a mock, since only a
     // real database proves the atomic conditional UPDATE actually serializes the decrements
     // instead of losing some of them.
+    // @DataJpaTest wraps each test in one rolled-back transaction by default. That's wrong here:
+    // it'd hold the row lock from the seeding decrement open for the whole method, serializing
+    // (and starving) the 20 callers' own transactions instead of letting them race for real.
+    // NOT_SUPPORTED makes every call below commit immediately, like it would in production.
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void tryDecreaseStock_underConcurrentCallers_neverOversells() throws InterruptedException {
         UUID productId = UUID.fromString("11111111-1111-1111-1111-111111111002");
         int available = productRepository.findById(productId).orElseThrow().getStockQuantity();
