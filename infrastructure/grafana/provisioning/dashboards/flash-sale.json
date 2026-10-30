@@ -1,0 +1,146 @@
+{
+  "id": null,
+  "uid": "shop-flash-sale",
+  "title": "Shop Flash Sale (shop-service)",
+  "tags": ["omyfish", "shop-service", "flash-sale"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "QPS (shop-service)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"shop-service\"}[1m]))",
+          "legendFormat": "req/s"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Checkout Outcomes/s",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(shop_checkout_requests_total[1m]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Undertow Busy / Pool Worker Threads",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "undertow_worker_busy_threads{job=\"shop-service\"}", "legendFormat": "busy" },
+        { "expr": "undertow_worker_pool_size{job=\"shop-service\"}", "legendFormat": "pool size" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "HikariCP Active Connections",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "hikaricp_connections_active{job=\"shop-service\"}", "legendFormat": "{{pool}}" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Latency p95 / p99 / p99.9 (ms)",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"shop-service\"}[5m]))) * 1000",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"shop-service\"}[5m]))) * 1000",
+          "legendFormat": "p99"
+        },
+        {
+          "expr": "histogram_quantile(0.999, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"shop-service\"}[5m]))) * 1000",
+          "legendFormat": "p99.9"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Undertow Worker Pool (busy / pool size / queue)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "undertow_worker_busy_threads{job=\"shop-service\"}", "legendFormat": "busy threads" },
+        { "expr": "undertow_worker_pool_size{job=\"shop-service\"}", "legendFormat": "pool size" },
+        { "expr": "undertow_worker_queue_size{job=\"shop-service\"}", "legendFormat": "queue size" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "HikariCP Active / Idle (primary vs replica)",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "hikaricp_connections_active{job=\"shop-service\"}", "legendFormat": "{{pool}} active" },
+        { "expr": "hikaricp_connections_idle{job=\"shop-service\"}", "legendFormat": "{{pool}} idle" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Product Cache Hit/Miss Ratio (L1/L2/miss)",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (cache, result) (rate(shop_cache_requests_total{job=\"shop-service\"}[1m]))",
+          "legendFormat": "{{cache}} {{result}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "JVM GC Pause (shop-service)",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum{job=\"shop-service\"}[1m])",
+          "legendFormat": "{{gc}} ({{action}})"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Checkout Requests by Outcome",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 6 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(shop_checkout_requests_total[1m]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    }
+  ]
+}
