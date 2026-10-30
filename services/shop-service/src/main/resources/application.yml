@@ -6,7 +6,76 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:omyfish}
     password: ${SPRING_DATASOURCE_PASSWORD:omyfish_dev}
     driver-class-name: org.postgresql.Driver
+    # Sized explicitly rather than left at Hikari's default-10, so pool exhaustion under a
+    # flash-sale spike fails fast (connection-timeout) instead of queuing checkout requests
+    # indefinitely — that fast failure is what lets Resilience4j's circuit breaker/fallback
+    # (added separately) actually engage instead of every request just hanging. minimum-idle
+    # equals maximum-pool-size per HikariCP's own guidance for a pool under sustained load,
+    # avoiding the overhead of growing/shrinking it mid-spike. 20 leaves headroom under
+    # Postgres's default max_connections=100, which this same instance also serves to
+    # identity-service/observation-service/species-service (CLAUDE.md's DB section) — revisit
+    # this budget once shop-service runs as multiple replicas behind the K8s HPA, since each
+    # replica gets its own 20-connection pool against the same shared Postgres.
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 20
+      connection-timeout: 3000
+      leak-detection-threshold: 30000
+  # Read replica for ProductRepositoryAdapter's catalog reads (config/DataSourceConfig.java,
+  # config/ReadWriteRoutingDataSource.java) — defaults to the primary's own URL/credentials when
+  # unset, so a local run or test with no postgres-replica container just routes "replica" reads
+  # back to the same database. A smaller, fast-failing pool than the primary's: this replica
+  # only ever sees cache-miss overflow (ProductCache already absorbs most catalog reads), so it
+  # doesn't need the primary's headroom, and a dead replica should fail a request fast rather
+  # than tie up a worker thread waiting on a connection that's never coming.
+  datasource-replica:
+    url: ${SPRING_DATASOURCE_REPLICA_URL:${spring.datasource.url}}
+    username: ${SPRING_DATASOURCE_REPLICA_USERNAME:${spring.datasource.username}}
+    password: ${SPRING_DATASOURCE_REPLICA_PASSWORD:${spring.datasource.password}}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 10
+      connection-timeout: 1000
+  # L2 of ProductCache (config/ProductCache.java) — a shared cache in front of the product
+  # catalog reads, not a general-purpose session/data store. Short timeout: a slow/unreachable
+  # Redis must fail back to Postgres quickly, not add its own latency on top of a cache miss.
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 500ms
+      connect-timeout: 500ms
+  # Additive event stream alongside the untouched RabbitMQ exchanges (omyfish.species,
+  # omyfish.observations) — only OrderPlacedEvent (config/KafkaConfig.java, adapter/out/messaging
+  # /KafkaOrderEventPublisher.java) flows through this. use-type-headers: false + a fixed
+  # default-type means the consumer trusts the listener method's declared type rather than the
+  # producer's FQCN header, same reasoning as notification-service's RabbitMQ
+  # Jackson2JsonMessageConverter INFERRED setting.
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: shop-service-ledger
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.omyfish.shared.events.OrderPlacedEvent
+        spring.json.trusted.packages: com.omyfish.shared.events
   jpa:
+    # false, not Spring Boot's default true: open-in-view binds a connection to the whole HTTP
+    # request before any @Transactional method runs, which happens outside any transaction and
+    # so always resolves to "primary" in ReadWriteRoutingDataSource — then that same connection
+    # gets reused for the rest of the request, silently defeating the replica routing below
+    # (and, it turns out, making every config/Transactional*UseCase wrapper's transaction never
+    # actually show as active either — found via this exact symptom). Safe to disable: every
+    # JPA entity's @ElementCollection in this service is already FetchType.EAGER, and every
+    # repository adapter converts to a plain detached domain object before returning, so
+    # nothing here ever relies on lazy-loading outside the repository call itself.
+    open-in-view: false
     hibernate:
       ddl-auto: none
     show-sql: false
@@ -22,6 +91,17 @@ spring:
 
 server:
   port: 8080
+  # Undertow's non-blocking XNIO I/O threads replace Tomcat's one-thread-per-connection model —
+  # far more concurrent flash-sale connections per thread, smaller memory footprint each.
+  # io threads only ever do non-blocking network I/O, so a small number (~1-2 per CPU core)
+  # is enough; worker threads run the actual servlet dispatch, including this service's
+  # blocking JDBC calls, so that pool needs to be much bigger — 8x the I/O pool is Undertow's
+  # own built-in default ratio, made explicit here instead of left implicit.
+  undertow:
+    threads:
+      io: 8
+      worker: 64
+    direct-buffers: true
 
 # Checkout returns 503 until this is configured. Can reuse the same Stripe account's secret key
 # as identity-service's billing module, but the webhook secret must be its own — Omyshop's
@@ -50,6 +130,82 @@ adyen:
 
 payment:
   default-processor: ${SHOP_PAYMENT_DEFAULT_PROCESSOR:stripe}
+  # config/MockPaymentCheckoutAdapter.java — only instantiated when enabled is true (set by
+  # services/shop-service/loadtest's compose override), so a normal run never has it as a
+  # candidate processor at all.
+  mock:
+    enabled: ${PAYMENT_MOCK_ENABLED:false}
+    base-url: ${PAYMENT_MOCK_BASE_URL:http://wiremock:8080}
+
+# Each payment processor gets its own circuit breaker/retry/bulkhead instance (sharing the
+# payment-gateway config template below) rather than one shared instance across all three —
+# Stripe going down must not also trip the breaker guarding PayPal/Adyen, which checkout could
+# still fall back to. Retrying is safe here specifically because every adapter now passes its
+# idempotencyKey argument through to the processor's own idempotency mechanism (Stripe's
+# Idempotency-Key, PayPal's PayPal-Request-Id, Adyen's RequestOptions key) — a retried attempt
+# replays the processor's original result instead of double-charging/double-creating a session.
+resilience4j:
+  circuitbreaker:
+    configs:
+      payment-gateway:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      stripe:
+        base-config: payment-gateway
+      paypal:
+        base-config: payment-gateway
+      adyen:
+        base-config: payment-gateway
+      mock:
+        base-config: payment-gateway
+  retry:
+    configs:
+      payment-gateway:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+    instances:
+      stripe:
+        base-config: payment-gateway
+      paypal:
+        base-config: payment-gateway
+      adyen:
+        base-config: payment-gateway
+      mock:
+        base-config: payment-gateway
+  bulkhead:
+    configs:
+      payment-gateway:
+        max-concurrent-calls: 20
+        max-wait-duration: 0
+    instances:
+      stripe:
+        base-config: payment-gateway
+      paypal:
+        base-config: payment-gateway
+      adyen:
+        base-config: payment-gateway
+      mock:
+        base-config: payment-gateway
+  # Admission control on /checkout itself, independent of the payment-processor breakers above —
+  # caps how many new checkout attempts per second this instance admits at all. timeout-duration
+  # 0 means an over-limit caller is rejected immediately (429) rather than queued, so a spike
+  # fails fast instead of backing up. 50/s is a provisional starting point, not yet calibrated —
+  # M7's load test results are what should actually tune this number.
+  ratelimiter:
+    instances:
+      checkout:
+        limit-for-period: 50
+        limit-refresh-period: 1s
+        timeout-duration: 0
 
 shop:
   stale-order-sweep:
@@ -66,7 +222,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,circuitbreakers,retries,bulkheads,ratelimiters
   metrics:
     export:
       prometheus:

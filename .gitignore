@@ -19,6 +19,7 @@ target/
 
 # IDE
 .idea/
+.claude/
 *.iws
 *.iml
 *.ipr
@@ -85,8 +86,11 @@ docs/find-pid-by-port.md
 docs/renov-vs-species-comparison.md
 docs/BEGINNER_GUIDE_FRONTEND.md
 docs/K8S_PRACTICE_PLAN.md
+docs/k8s-practice/
 docs/BREAKPOINTS.md
 docs/STRIPE_LOCAL_TESTING.md
 
 # WSL / Windows download metadata
 *:Zone.Identifier
+/docs/QPS2000_FlashSale.md
+/docs/QPS2000_FlashSale_Plan.md
