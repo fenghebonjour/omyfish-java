@@ -11,7 +11,7 @@ import java.util.UUID;
 interface ProductJpaRepository extends JpaRepository<ProductJpaEntity, UUID> {
     List<ProductJpaEntity> findByActiveTrue();
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE ProductJpaEntity p SET p.stockQuantity = p.stockQuantity - :qty "
         + "WHERE p.id = :id AND p.stockQuantity >= :qty")
     int decreaseStockIfAvailable(@Param("id") UUID id, @Param("qty") int qty);
