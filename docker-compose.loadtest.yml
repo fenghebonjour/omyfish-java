@@ -1,0 +1,31 @@
+# Override file for M7's k6 load testing (services/shop-service/loadtest/) — NOT part of the
+# normal stack. Run alongside the base compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.loadtest.yml up -d --build shop-service wiremock
+# Adds a WireMock stand-in payment gateway and switches shop-service onto
+# config/MockPaymentCheckoutAdapter.java instead of real Stripe/PayPal/Adyen, so load tests
+# never touch real credentials or processor rate limits.
+services:
+  wiremock:
+    image: wiremock/wiremock:3.9.1
+    ports:
+      - "8089:8080"
+    volumes:
+      - ./services/shop-service/loadtest/wiremock/mappings:/home/wiremock/mappings:ro
+    networks: [omyfish-net]
+    healthcheck:
+      # Not --spider: wiremock's /__admin/mappings response is chunked (no Content-Length),
+      # which wget's spider mode handles as a failure even though the request succeeded
+      # (confirmed live — a real GET here always worked, --spider never did).
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/__admin/mappings"]
+      interval: 10s
+      retries: 5
+      start_period: 20s
+
+  shop-service:
+    environment:
+      PAYMENT_MOCK_ENABLED: "true"
+      PAYMENT_MOCK_BASE_URL: http://wiremock:8080
+      SHOP_PAYMENT_DEFAULT_PROCESSOR: mock
+    depends_on:
+      wiremock:
+        condition: service_healthy

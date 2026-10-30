@@ -21,6 +21,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,7 +43,7 @@ class ReserveOrderServiceTest {
 
         when(cartRepository.findByUserId(userId)).thenReturn(Optional.of(cart));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(productRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.tryDecreaseStock(productId, 2)).thenReturn(true);
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(cartRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -49,7 +51,7 @@ class ReserveOrderServiceTest {
 
         assertThat(order.getLines()).hasSize(1);
         assertThat(order.getLines().get(0).quantity()).isEqualTo(2);
-        assertThat(product.getStockQuantity()).isEqualTo(8);
+        verify(productRepository).tryDecreaseStock(productId, 2);
         assertThat(cart.getItems()).isEmpty();
     }
 
@@ -63,7 +65,7 @@ class ReserveOrderServiceTest {
 
         when(cartRepository.findByGuestToken(guestToken)).thenReturn(Optional.of(cart));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(productRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.tryDecreaseStock(productId, 1)).thenReturn(true);
         when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(cartRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -92,8 +94,30 @@ class ReserveOrderServiceTest {
 
         when(cartRepository.findByUserId(userId)).thenReturn(Optional.of(cart));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.tryDecreaseStock(productId, 5)).thenReturn(false);
 
         assertThatThrownBy(() -> service.reserve(CartOwner.ofUser(userId), null))
             .isInstanceOf(InsufficientStockException.class);
+    }
+
+    @Test
+    void reserve_concurrentDecrementLosesTheRace_throwsInsufficientStockEvenThoughInMemorySnapshotLookedFine() {
+        // tryDecreaseStock returning false models another concurrent request having just taken
+        // the last unit(s) between this product load and the atomic UPDATE — the in-memory
+        // stockQuantity snapshot (still showing enough) must not be trusted over it.
+        UUID userId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        Cart cart = Cart.createEmpty(CartOwner.ofUser(userId));
+        cart.addItem(productId, 1);
+        Product product = Product.reconstitute(productId, "Jig", "desc", 999, "img.jpg", 1, true);
+
+        when(cartRepository.findByUserId(userId)).thenReturn(Optional.of(cart));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(productRepository.tryDecreaseStock(productId, 1)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.reserve(CartOwner.ofUser(userId), null))
+            .isInstanceOf(InsufficientStockException.class);
+
+        verify(orderRepository, never()).save(any());
     }
 }
