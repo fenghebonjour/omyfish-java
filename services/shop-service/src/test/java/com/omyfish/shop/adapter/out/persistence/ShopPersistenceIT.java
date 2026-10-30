@@ -13,8 +13,11 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -62,6 +65,7 @@ class ShopPersistenceIT {
 
     @Autowired private ProductRepository productRepository;
     @Autowired private OrderRepository orderRepository;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     @Test
     void seededProduct_isReadableThroughTheRepositoryAdapter() {
@@ -81,16 +85,24 @@ class ShopPersistenceIT {
     // instead of losing some of them.
     // @DataJpaTest wraps each test in one rolled-back transaction by default. That's wrong here:
     // it'd hold the row lock from the seeding decrement open for the whole method, serializing
-    // (and starving) the 20 callers' own transactions instead of letting them race for real.
-    // NOT_SUPPORTED makes every call below commit immediately, like it would in production.
+    // (and starving) the 20 callers' own transactions instead of letting them race for real. So
+    // this test opts out (NOT_SUPPORTED) and instead commits each call in its own REQUIRES_NEW
+    // transaction via TransactionTemplate — including for the 20 pool threads, which never had
+    // the main thread's ambient test transaction to begin with.
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void tryDecreaseStock_underConcurrentCallers_neverOversells() throws InterruptedException {
+        TransactionTemplate newTx = new TransactionTemplate(transactionManager);
+        newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
         UUID productId = UUID.fromString("11111111-1111-1111-1111-111111111002");
-        int available = productRepository.findById(productId).orElseThrow().getStockQuantity();
+        int available = newTx.execute(status ->
+            productRepository.findById(productId).orElseThrow().getStockQuantity());
         while (available > 5) {
-            productRepository.tryDecreaseStock(productId, available - 5);
-            available = productRepository.findById(productId).orElseThrow().getStockQuantity();
+            int decrement = available - 5;
+            newTx.executeWithoutResult(status -> productRepository.tryDecreaseStock(productId, decrement));
+            available = newTx.execute(status ->
+                productRepository.findById(productId).orElseThrow().getStockQuantity());
         }
         assertThat(available).isEqualTo(5);
 
@@ -100,7 +112,9 @@ class ShopPersistenceIT {
         try {
             for (int i = 0; i < callers; i++) {
                 pool.submit(() -> {
-                    if (productRepository.tryDecreaseStock(productId, 1)) {
+                    boolean decreased = Boolean.TRUE.equals(
+                        newTx.execute(status -> productRepository.tryDecreaseStock(productId, 1)));
+                    if (decreased) {
                         successes.incrementAndGet();
                     }
                 });
@@ -110,7 +124,8 @@ class ShopPersistenceIT {
             assertThat(pool.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
         }
 
-        int remaining = productRepository.findById(productId).orElseThrow().getStockQuantity();
+        int remaining = newTx.execute(status ->
+            productRepository.findById(productId).orElseThrow().getStockQuantity());
         assertThat(successes.get()).isEqualTo(5);
         assertThat(remaining).isZero();
     }
