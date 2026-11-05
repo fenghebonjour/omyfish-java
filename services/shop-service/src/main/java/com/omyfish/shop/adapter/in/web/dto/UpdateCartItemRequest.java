@@ -1,4 +1,6 @@
 package com.omyfish.shop.adapter.in.web.dto;
 
-public record UpdateCartItemRequest(int quantity) {
+import jakarta.validation.constraints.PositiveOrZero;
+
+public record UpdateCartItemRequest(@PositiveOrZero int quantity) {
 }

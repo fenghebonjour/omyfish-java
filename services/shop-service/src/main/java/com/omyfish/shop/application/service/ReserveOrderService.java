@@ -1,5 +1,6 @@
 package com.omyfish.shop.application.service;
 
+import com.omyfish.shop.domain.exception.InsufficientStockException;
 import com.omyfish.shop.domain.exception.ProductNotFoundException;
 import com.omyfish.shop.domain.model.Cart;
 import com.omyfish.shop.domain.model.Order;
@@ -40,8 +41,12 @@ public class ReserveOrderService implements ReserveOrderUseCase {
         for (CartItem item : cart.getItems()) {
             Product product = productRepository.findById(item.productId())
                 .orElseThrow(() -> new ProductNotFoundException(item.productId()));
-            product.decreaseStock(item.quantity());
-            productRepository.save(product);
+            // product.getStockQuantity() here is just a snapshot for the error message below —
+            // the atomic conditional UPDATE is the actual authority on whether enough stock
+            // remains, so a stale read of it between this load and the UPDATE can't oversell.
+            if (!productRepository.tryDecreaseStock(product.getId(), item.quantity())) {
+                throw new InsufficientStockException(product.getId(), item.quantity(), product.getStockQuantity());
+            }
             lines.add(new OrderLine(product.getId(), product.getName(), product.getPriceCents(), item.quantity()));
         }
 

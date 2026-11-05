@@ -8,9 +8,12 @@ networks:
 
 volumes:
   postgres_data:
+  postgres_replica_data:
   mongo_data:
   rabbitmq_data:
+  kafka_data:
   minio_data:
+  redis_data:
   prometheus_data:
   grafana_data:
 
@@ -28,11 +31,43 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Lets postgres-replica's pg_basebackup connect — see the script's own comment.
+      - ./infrastructure/postgres/primary-init/allow-replication.sh:/docker-entrypoint-initdb.d/allow-replication.sh:ro
     networks: [omyfish-net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U omyfish"]
       interval: 10s
       retries: 5
+
+  # Streaming read replica for shop-service's product-catalog reads (ProductRepositoryAdapter,
+  # routed via config/ReadWriteRoutingDataSource — writes, including the flash-sale stock
+  # decrement, always stay on postgres). Hand-rolled via pg_basebackup rather than a managed
+  # replica service or an operator like Patroni, since this is a demo stack, not production —
+  # docs/architecture/FLASH_SALE_DEEP_DIVE.md spells out what a real deployment would use
+  # instead. Because the Caffeine/Redis cache (config/ProductCache.java) already absorbs most
+  # catalog-read traffic, this replica only ever sees cache-miss overflow — a real outage here
+  # only matters for requests that were already going to miss the cache.
+  postgres-replica:
+    image: postgis/postgis:16-3.4-alpine
+    entrypoint: ["/bin/sh", "/replica-entrypoint.sh"]
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      PRIMARY_HOST: postgres
+      POSTGRES_USER: omyfish
+      POSTGRES_PASSWORD: omyfish_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    networks: [omyfish-net]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omyfish"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
 
   mongodb:
     image: mongo:7
@@ -65,6 +100,36 @@ services:
       interval: 15s
       retries: 5
 
+  # Single-broker KRaft-mode Kafka (no ZooKeeper) — additive alongside rabbitmq above, scoped
+  # only to shop-service's new OrderPlacedEvent stream (omyfish.shop.orders topic). The existing
+  # omyfish.species/omyfish.observations RabbitMQ exchanges are untouched; this is not a
+  # RabbitMQ replacement (docs/architecture/FLASH_SALE_DEEP_DIVE.md explains why Kafka was
+  # chosen for this one mechanism: per-SKU partition ordering + replay for the audit ledger).
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -77,6 +142,22 @@ services:
     volumes:
       - minio_data:/data
     networks: [omyfish-net]
+
+  # Single instance, not a cluster — shop-service's L2 product-catalog cache
+  # (services/shop-service/.../config/ProductCache.java). A real Redis Cluster/Sentinel would
+  # be over-engineering for this demo's 10-SKU catalog; this is a documented scope boundary,
+  # not an oversight (docs/architecture/FLASH_SALE_DEEP_DIVE.md).
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks: [omyfish-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:v2.52.0
@@ -223,11 +304,13 @@ services:
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: omyfish
       SPRING_RABBITMQ_PASSWORD: omyfish_dev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
       SPRING_FLYWAY_BASELINE_VERSION: "0"
     depends_on:
       postgres: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
+      kafka: { condition: service_healthy }
     networks: [omyfish-net]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
@@ -251,9 +334,19 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: omyfish
       MINIO_SECRET_KEY: omyfish_dev
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATASOURCE_REPLICA_URL: jdbc:postgresql://postgres-replica:5432/omyfish
+      SPRING_DATASOURCE_REPLICA_USERNAME: omyfish
+      SPRING_DATASOURCE_REPLICA_PASSWORD: omyfish_dev
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Off by default — set to "true" for a load-test run (Dockerfile's entrypoint reads this).
+      JFR_ENABLED: ${JFR_ENABLED:-false}
     depends_on:
       postgres: { condition: service_healthy }
+      postgres-replica: { condition: service_healthy }
       minio: { condition: service_started }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
     networks: [omyfish-net]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]

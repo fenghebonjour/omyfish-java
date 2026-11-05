@@ -33,4 +33,9 @@ public class ProductRepositoryAdapter implements ProductRepository {
     public Product save(Product product) {
         return jpaRepository.save(ProductJpaEntity.from(product)).toDomain();
     }
+
+    @Override
+    public boolean tryDecreaseStock(UUID id, int quantity) {
+        return jpaRepository.decreaseStockIfAvailable(id, quantity) > 0;
+    }
 }

@@ -26,6 +26,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,7 +74,7 @@ class ShopCheckoutFlowIT {
         when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
             .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_it_1", "https://stripe.test/sess_it_1")));
 
-        var checkoutResult = checkoutUseCase.checkout(owner, null, "https://ok", "https://cancel");
+        var checkoutResult = checkoutUseCase.checkout(owner, null, "https://ok", "https://cancel", "idem-it-1");
         assertThat(getOrderUseCase.get(checkoutResult.orderId(), userId).getStatus())
             .isEqualTo(OrderStatus.PENDING_PAYMENT);
 
@@ -90,5 +92,28 @@ class ShopCheckoutFlowIT {
         assertThat(paidOrder.getStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(paidOrder.getStripePaymentIntentId()).isEqualTo("pi_it_1");
         assertThat(paidOrder.getShippingAddress()).isEqualTo(shippingAddress);
+    }
+
+    @Test
+    void checkout_retriedWithSameIdempotencyKey_replaysOriginalOrderInsteadOfDecrementingStockAgain() {
+        UUID userId = UUID.randomUUID();
+        CartOwner owner = CartOwner.ofUser(userId);
+        addToCartUseCase.addItem(owner, SEEDED_PRODUCT_ID, 1);
+
+        when(paymentPort.name()).thenReturn("stripe");
+        when(paymentPort.isConfigured()).thenReturn(true);
+        when(paymentPort.createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any()))
+            .thenReturn(Optional.of(new PaymentPort.CheckoutSession("sess_it_2", "https://stripe.test/sess_it_2")));
+
+        var first = checkoutUseCase.checkout(owner, null, "https://ok", "https://cancel", "idem-it-replay");
+        // A retried request (double-click, client timeout-and-retry) with the same key — the
+        // cart is already empty from the first call, so a second real reservation attempt
+        // would throw CartEmptyException; replaying instead of re-reserving is the whole point.
+        var retried = checkoutUseCase.checkout(owner, null, "https://ok", "https://cancel", "idem-it-replay");
+
+        assertThat(retried.orderId()).isEqualTo(first.orderId());
+        assertThat(retried.checkoutUrl()).isEqualTo(first.checkoutUrl());
+        verify(paymentPort, times(1))
+            .createCheckoutSession(any(), any(), anyString(), anyString(), anyString(), any());
     }
 }

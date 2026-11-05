@@ -12,6 +12,9 @@ import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
 import com.stripe.param.RefundCreateParams;
 import com.stripe.param.checkout.SessionCreateParams;
+import io.github.resilience4j.bulkhead.annotation.Bulkhead;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -53,7 +56,16 @@ public class StripeCheckoutAdapter implements PaymentPort {
         return stripe.baseOptions();
     }
 
+    // Safe to retry: every call below passes idempotencyKey as Stripe's own Idempotency-Key, so
+    // a retried attempt with the same key returns Stripe's original result instead of creating
+    // a duplicate session/refund. @CircuitBreaker stops hammering Stripe (and stops every
+    // concurrent checkout from paying its own 10s+15s timeout) once it's reliably failing, and
+    // @Bulkhead caps how many checkout threads can be in this call at once so a slow Stripe
+    // can't starve the whole worker pool.
     @Override
+    @Retry(name = "stripe")
+    @CircuitBreaker(name = "stripe")
+    @Bulkhead(name = "stripe")
     public Optional<CheckoutSession> createCheckoutSession(
         UUID orderId, List<LineItem> lines, String successUrl, String cancelUrl, String idempotencyKey,
         String customerEmail
@@ -101,6 +113,9 @@ public class StripeCheckoutAdapter implements PaymentPort {
     }
 
     @Override
+    @Retry(name = "stripe")
+    @CircuitBreaker(name = "stripe")
+    @Bulkhead(name = "stripe")
     public Optional<RefundResult> refund(String paymentIntentId, Long amountCents, String idempotencyKey) {
         if (secretKey.isBlank() || paymentIntentId == null || paymentIntentId.isBlank()) {
             return Optional.empty();

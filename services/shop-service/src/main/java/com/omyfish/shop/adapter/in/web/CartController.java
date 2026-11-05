@@ -9,6 +9,7 @@ import com.omyfish.shop.domain.port.in.AddToCartUseCase;
 import com.omyfish.shop.domain.port.in.MergeGuestCartUseCase;
 import com.omyfish.shop.domain.port.in.UpdateCartItemUseCase;
 import com.omyfish.shop.domain.port.in.ViewCartUseCase;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,7 +47,7 @@ public class CartController {
     public ResponseEntity<CartResponse> addItem(
         @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
         @RequestHeader(value = "X-Cart-Token", required = false) String cartTokenHeader,
-        @RequestBody AddCartItemRequest request
+        @Valid @RequestBody AddCartItemRequest request
     ) {
         CartOwner owner = CartOwnerResolver.resolve(userIdHeader, cartTokenHeader);
         var cart = addToCartUseCase.addItem(owner, request.productId(), request.quantity());
@@ -58,7 +59,7 @@ public class CartController {
         @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
         @RequestHeader(value = "X-Cart-Token", required = false) String cartTokenHeader,
         @PathVariable UUID productId,
-        @RequestBody UpdateCartItemRequest request
+        @Valid @RequestBody UpdateCartItemRequest request
     ) {
         CartOwner owner = CartOwnerResolver.resolve(userIdHeader, cartTokenHeader);
         var cart = updateCartItemUseCase.updateQuantity(owner, productId, request.quantity());

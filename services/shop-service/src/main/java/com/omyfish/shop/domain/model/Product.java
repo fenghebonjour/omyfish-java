@@ -1,6 +1,5 @@
 package com.omyfish.shop.domain.model;
 
-import com.omyfish.shop.domain.exception.InsufficientStockException;
 import com.omyfish.shared.domain.Entity;
 
 import java.util.UUID;
@@ -51,13 +50,6 @@ public class Product extends Entity<UUID> {
     public void setImage(String imageUrl, String imageStorageKey) {
         this.imageUrl = imageUrl;
         this.imageStorageKey = imageStorageKey;
-    }
-
-    public void decreaseStock(int quantity) {
-        if (quantity > stockQuantity) {
-            throw new InsufficientStockException(getId(), quantity, stockQuantity);
-        }
-        stockQuantity -= quantity;
     }
 
     public void restock(int quantity) {

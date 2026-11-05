@@ -21,6 +21,19 @@ spring:
     port: 5672
     username: ${SPRING_RABBITMQ_USERNAME:omyfish}
     password: ${SPRING_RABBITMQ_PASSWORD:omyfish_dev}
+  # Additive: shop-service's new OrderPlacedEvent stream (consumer/OrderPlacedConsumer.java) —
+  # the existing RabbitMQ consumers above are untouched.
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: com.omyfish.shared.events.OrderPlacedEvent
+        spring.json.trusted.packages: com.omyfish.shared.events
 
 server:
   port: 8080
